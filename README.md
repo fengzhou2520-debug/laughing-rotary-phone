@@ -1,8 +1,10 @@
-# Male CNS full-connectome LIF simulator
+# Male CNS full-connectome embodied simulator
 
-Browser webapp that runs a **leaky integrate-and-fire** model on the **full Janelia Male CNS v1.0 proofread connectome** (every `Traced` neuron and every synapse between those neurons).
+Browser webapp that runs a **leaky integrate-and-fire** model on the **full Janelia Male CNS v1.0 proofread connectome** (every `Traced` neuron and every synapse between those neurons), embodied as a fruit fly in a terrarium — walking, feeding, and gesturing from neural activity.
 
 Live on GitHub Pages after enabling Pages (Settings → Pages → GitHub Actions).
+
+Inspired by [infinite-sugar](https://github.com/cnqso/infinite-sugar); this build uses the Male CNS (brain + VNC) so **leg motor neurons** can pace a real walking gait, not only descending “shuffle” commands.
 
 ## What’s included
 
@@ -11,16 +13,19 @@ Live on GitHub Pages after enabling Pages (Settings → Pages → GitHub Actions
 | Neurons | `body-annotations-male-cns-v1.0-minconf-0.5.feather` (`status==Traced`) |
 | E/I signs | `body-neurotransmitters-male-cns-v1.0.feather` (GABA/glutamate inhibitory) |
 | Synapses | `connectome-weights-male-cns-v1.0-minconf-0.5.feather` (edges with both ends traced) |
+| Body | [FlyBody](https://github.com/TuragaLab/flybody) via MuJoCo Menagerie + MuJoCo WASM |
+| Scene | Terrarium / props (CC-BY — see `web/public/model/props/CREDITS.md`) |
 
 Current build: **165,122 neurons · 25,563,197 synapses · 11,751 cell types**.
 
-Model equations and parameters match [Shiu et al., Nature 2024](https://doi.org/10.1038/s41586-024-07763-9) / [PMC10187186](https://pmc.ncbi.nlm.nih.gov/articles/PMC10187186/) and the reference implementations in [philshiu/Drosophila_brain_model](https://github.com/philshiu/Drosophila_brain_model) and [eonsystemspbc/fly-brain](https://github.com/eonsystemspbc/fly-brain):
+### Embodiment
 
-- \(v_0 = v_\mathrm{reset} = -52\,\mathrm{mV}\), \(v_\mathrm{th} = -45\,\mathrm{mV}\)
-- \(\tau_\mathrm{mem} = 20\,\mathrm{ms}\), \(\tau_\mathrm{syn} = 5\,\mathrm{ms}\)
-- \(t_\mathrm{ref} = 2.2\,\mathrm{ms}\), \(t_\mathrm{delay} = 1.8\,\mathrm{ms}\)
-- \(W_\mathrm{syn} = 0.275\,\mathrm{mV}\)
-- Poisson drive at configurable Hz with scale 250
+- Continuous sugar stimulation of gustatory receptor neurons
+- Proboscis / neck / antennal / wing actuators driven by identified motor & descending pools
+- Tripod-style walking from VNC leg flexor/extensor rates, with free-joint translation so the fly walks around the terrarium
+- Adaptive quality scaler for realtime performance
+
+Realtime kernel uses 1&nbsp;ms steps (infinite-sugar / desktop-fly style) on the Male CNS CSR wiring. Batch Shiu-parameter LIF (`web/src/lif.js`) remains available for offline smoke tests.
 
 ## Local app
 
@@ -30,7 +35,7 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints, click **Load full connectome**, then excite cell types (e.g. `ORN`, `L1`, `Kenyon_Cell` types) and run.
+Open the URL Vite prints, name the fly, wait for the connectome + body to load (~75&nbsp;MB compressed CSR on first visit). Drag to orbit, scroll to zoom. Toggle **Sugar**, **Pause**, and open **Inspect** for rates.
 
 ## Rebuild connectome assets
 
@@ -49,6 +54,6 @@ The workflow in `.github/workflows/pages.yml` builds the Vite app and pushes it 
 
 ## Notes
 
-- Fragment/orphan segments in the raw weight table are excluded; only proofread **Traced** bodies enter the network—the full neuronal Male CNS graph used for analysis, not a toy subsample.
-- First load downloads ~75 MB of compressed CSR data into the browser tab; keep the tab open while it decompresses.
-- Simulation cost scales with active neurons and their out-degree; start with 200–500 ms and use **Max excite N** (default 100). Prefer cholinergic types (e.g. `Mi1`, `ORN_DA1`); GABA/glutamate cells are inhibitory in this model.
+- Fragment/orphan segments in the raw weight table are excluded; only proofread **Traced** bodies enter the network.
+- First load downloads ~75 MB of compressed CSR data plus the FlyBody meshes; keep the tab open while it decompresses.
+- Some movements use supplied gait patterns scaled by neural rates (explicit, not learned). There is no habituation.

@@ -2,145 +2,210 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Male CNS LIF — Full Connectome</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#0c1210" />
+    <meta
+      name="description"
+      content="Embodied Male CNS connectome simulation — a fruit fly walking in a terrarium, driven by 165k neurons."
+    />
+    <title>Male CNS · Embodied Fly</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/art.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c1210'/%3E%3Ctext x='32' y='42' text-anchor='middle' fill='%23c4f061' font-size='28'%3E%E2%99%82%3C/text%3E%3C/svg%3E"
+    />
   </head>
   <body>
-    <div class="bg" aria-hidden="true"></div>
-    <header class="top">
-      <div class="brand">
-        <div class="brand-mark">♂CNS</div>
-        <div>
-          <h1>Male CNS Connectome LIF</h1>
-          <p class="tag">
-            Full Janelia Male CNS v1.0 · Shiu et al. leaky integrate-and-fire
-          </p>
-        </div>
-      </div>
-      <div class="stats" id="stats">
-        <div><span>neurons</span><strong id="stat-n">—</strong></div>
-        <div><span>synapses</span><strong id="stat-e">—</strong></div>
-        <div><span>types</span><strong id="stat-t">—</strong></div>
-      </div>
-    </header>
-
-    <main>
-      <section class="panel load-panel" id="load-panel">
-        <h2>Connectome</h2>
-        <p class="hint">
-          Loads the complete proofread graph: every
-          <code>status==Traced</code> body and every synapse between those bodies
-          from
-          <a href="https://male-cns.janelia.org/download/" target="_blank" rel="noreferrer"
-            >male-cns.janelia.org</a
-          >
-          (annotations + neurotransmitters + connectome-weights minconf 0.5).
+    <div id="boot">
+      <form id="name-form" class="name-form">
+        <label for="fly-name">Name the fly</label>
+        <p class="boot-sub">
+          Full Janelia Male CNS · 165,122 neurons · embodied in FlyBody
         </p>
-        <button id="btn-load" class="primary">Load full connectome</button>
-        <div class="progress" id="load-progress" hidden>
-          <div class="bar"><i id="load-bar"></i></div>
-          <p id="load-label">Starting…</p>
+        <div class="name-entry">
+          <input
+            id="fly-name"
+            name="fly-name"
+            type="text"
+            maxlength="40"
+            required
+            autocomplete="off"
+            spellcheck="false"
+            enterkeyhint="go"
+            aria-describedby="name-error"
+            autofocus
+            placeholder="e.g. Orbit"
+          />
+          <button type="submit" class="icon-button" aria-label="Begin">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h14m-6-6 6 6-6 6" />
+            </svg>
+          </button>
         </div>
-      </section>
+        <p id="name-error" role="alert"></p>
+      </form>
+      <div id="loading" hidden role="status" aria-live="polite">
+        <div class="boot-wordmark" data-fly-name></div>
+        <div class="loading-track" aria-hidden="true"></div>
+        <p id="bootmsg">Loading simulation</p>
+      </div>
+    </div>
 
-      <section class="panel controls" id="controls" hidden>
-        <h2>Stimulus</h2>
-        <div class="grid">
-          <label>
-            Excite (type / instance / bodyId)
-            <textarea id="excite" rows="3" placeholder="e.g. Mi1&#10;ORN_DA1&#10;or body IDs, one per line">Mi1</textarea>
-          </label>
-          <label>
-            Silence (optional)
-            <textarea id="silence" rows="3" placeholder="optional cell types or IDs"></textarea>
-          </label>
-          <label>
-            Poisson rate (Hz)
-            <input id="rate" type="number" min="1" max="500" value="150" />
-          </label>
-          <label>
-            Duration (ms)
-            <input id="duration" type="number" min="50" max="5000" step="50" value="200" />
-          </label>
-          <label>
-            Max excite N
-            <input id="max-excite" type="number" min="1" max="5000" value="100" />
-          </label>
+    <main id="artwork" inert aria-label="A live simulated fruit fly in a terrarium">
+      <div class="shade" aria-hidden="true"></div>
+      <header class="masthead">
+        <div class="identity">
+          <p class="brand-eyebrow">♂ Male CNS</p>
+          <h1 data-fly-name></h1>
         </div>
-        <div class="row">
-          <button id="btn-resolve" class="ghost">Preview targets</button>
-          <button id="btn-run" class="primary">Run simulation</button>
-          <button id="btn-export" class="ghost" disabled>Export spikes CSV</button>
+        <nav class="masthead-actions" aria-label="Artwork">
+          <button class="text-button" id="b_about" aria-haspopup="dialog">About</button>
+          <button class="text-button" id="b_exit" aria-haspopup="dialog">Exit</button>
+        </nav>
+      </header>
+      <footer class="art-footer">
+        <div class="neural-corner">
+          <div class="counter" aria-label="Cumulative feeding motor spikes while sugar is on">
+            <span id="s_cnt">0</span>
+            <span class="counter-label">feeding signals</span>
+          </div>
+          <figure class="neural-view" aria-labelledby="neural-map-title">
+            <figcaption id="neural-map-title">Neural activity</figcaption>
+            <canvas
+              id="neural-map"
+              role="img"
+              aria-label="Role-rate bars for sensory, motor and descending populations."
+            ></canvas>
+            <div class="neural-legend" aria-hidden="true">
+              <span class="sensory">Sensory</span>
+              <span class="internal">Internal</span>
+              <span class="motor">Motor</span>
+            </div>
+          </figure>
         </div>
-        <p class="hint" id="resolve-out"></p>
-        <div class="progress" id="run-progress" hidden>
-          <div class="bar"><i id="run-bar"></i></div>
-          <p id="run-label">Simulating…</p>
+        <div class="art-controls">
+          <button id="b_pause" class="icon-button" aria-label="Pause" title="Pause">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <g class="pause-symbol"><path d="M9 6v12M15 6v12" /></g>
+              <g class="play-symbol"><path d="m9 6 9 6-9 6Z" /></g>
+            </svg>
+          </button>
+          <button id="b_home" class="icon-button" aria-label="Return to the fly" title="Return to the fly">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+          <button
+            id="b_sugar"
+            class="sugar-button on"
+            data-stim="sweet"
+            aria-pressed="true"
+          >
+            <span class="sugar-dot" aria-hidden="true"></span>
+            <span id="sugar-label">Sugar on</span>
+          </button>
         </div>
-      </section>
-
-      <section class="panel viz" id="viz" hidden>
-        <div class="viz-head">
-          <h2>Activity</h2>
-          <p id="result-summary"></p>
-        </div>
-        <canvas id="raster" width="1200" height="420"></canvas>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Rate (Hz)</th>
-                <th>Count</th>
-                <th>Type</th>
-                <th>Instance</th>
-                <th>NT</th>
-                <th>Body ID</th>
-              </tr>
-            </thead>
-            <tbody id="rate-body"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="panel refs">
-        <h2>Model &amp; data</h2>
-        <ul>
-          <li>
-            LIF parameters from
-            <a href="https://doi.org/10.1038/s41586-024-07763-9" target="_blank" rel="noreferrer"
-              >Shiu et al., Nature 2024</a
-            >
-            /
-            <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10187186/" target="_blank" rel="noreferrer"
-              >PMC10187186</a
-            >
-            · reference code
-            <a href="https://github.com/philshiu/Drosophila_brain_model" target="_blank" rel="noreferrer"
-              >philshiu/Drosophila_brain_model</a
-            >
-            ·
-            <a href="https://github.com/eonsystemspbc/fly-brain" target="_blank" rel="noreferrer"
-              >eonsystemspbc/fly-brain</a
-            >
-          </li>
-          <li>
-            Connectome:
-            <a href="https://www.janelia.org/project-team/flyem/male-cns-connectome" target="_blank" rel="noreferrer"
-              >Janelia FlyEM Male CNS</a
-            >
-            — GABA/glutamate inhibitory; ACh &amp; monoamines excitatory.
-          </li>
-        </ul>
-      </section>
+        <button id="b_inspect" class="text-button inspect-button" aria-haspopup="dialog">
+          Inspect
+        </button>
+      </footer>
     </main>
 
+    <dialog id="about" aria-label="About">
+      <form method="dialog" class="dialog-close">
+        <button class="icon-button" aria-label="Close about">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </form>
+      <p>
+        <span data-fly-name></span> is an embodied whole-CNS emulation using the
+        <a href="https://male-cns.janelia.org/" target="_blank" rel="noreferrer"
+          >Janelia Male CNS v1.0</a
+        >
+        proofread connectome — every traced neuron and synapse, including the ventral nerve cord.
+        Sweet-sensing gustatory neurons are continuously stimulated. Head, antennae, wings and
+        feeding follow identified motor and descending pools; walking is paced by real leg motor
+        neurons in the VNC.
+      </p>
+      <details class="work-notes">
+        <summary>Technical summary</summary>
+        <p>
+          Realtime LIF kernel (1&nbsp;ms steps) on the full Male CNS CSR graph
+          (<span id="about-n">165,122</span> neurons ·
+          <span id="about-e">25,563,197</span> synapses). Parameters inspired by
+          <a href="https://doi.org/10.1038/s41586-024-07763-9" target="_blank" rel="noreferrer"
+            >Shiu et al., Nature 2024</a
+          >
+          and the embodiment pattern of
+          <a href="https://github.com/cnqso/infinite-sugar" target="_blank" rel="noreferrer"
+            >infinite-sugar</a
+          >. Body:
+          <a href="https://github.com/TuragaLab/flybody" target="_blank" rel="noreferrer">FlyBody</a>
+          via MuJoCo WASM + three.js. No learning or habituation.
+        </p>
+        <div class="credits">
+          <h3>Made possible by</h3>
+          <p>
+            Janelia FlyEM Male CNS · Shiu et al. · FlyBody / MuJoCo Menagerie · three.js · cannon-es ·
+            terrarium props via Poly Pizza (see
+            <code>model/props/CREDITS.md</code>).
+          </p>
+        </div>
+      </details>
+    </dialog>
+
+    <dialog id="inspect" aria-labelledby="inspect-title">
+      <form method="dialog" class="dialog-close">
+        <button class="icon-button" aria-label="Close inspector">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </form>
+      <h2 id="inspect-title" data-fly-name></h2>
+      <div id="hud">
+        <section aria-labelledby="neural-details-title">
+          <h3 id="neural-details-title">Neural activity</h3>
+          <table>
+            <tr><td>neurons</td><td id="s_neu">–</td></tr>
+            <tr><td>synapses</td><td id="s_syn">–</td></tr>
+            <tr><td>brain time</td><td id="s_bms">–</td></tr>
+            <tr><td>whole CNS</td><td id="s_pop">–</td></tr>
+            <tr><td>sweet GRN</td><td id="s_grn">–</td></tr>
+            <tr><td>proboscis MN</td><td id="s_mnp">–</td></tr>
+            <tr><td>ingestion MN</td><td id="s_mni">–</td></tr>
+            <tr><td>neck MN</td><td id="s_neck">–</td></tr>
+            <tr><td>antennal MN</td><td id="s_ant">–</td></tr>
+            <tr><td>leg flexor MN</td><td id="s_leg">–</td></tr>
+            <tr><td>gait steps</td><td id="s_walk">–</td></tr>
+            <tr><td>giant fiber</td><td id="s_gf">–</td></tr>
+            <tr><td>escape wing DN</td><td id="s_esc">–</td></tr>
+            <tr><td>steering DN L/R</td><td id="s_steer">–</td></tr>
+            <tr><td>grooming DN</td><td id="s_groom">–</td></tr>
+            <tr><td>PAM (DA)</td><td id="s_pam">–</td></tr>
+          </table>
+        </section>
+        <section aria-labelledby="simulation-details-title">
+          <h3 id="simulation-details-title">Simulation</h3>
+          <table>
+            <tr><td>fps</td><td id="s_fps">–</td></tr>
+            <tr><td>sim time</td><td id="s_time">–</td></tr>
+            <tr><td>real-time</td><td id="s_rt">–</td></tr>
+            <tr><td>steps/s</td><td id="s_sps">–</td></tr>
+            <tr><td>bodies</td><td id="s_nbody">–</td></tr>
+            <tr><td>actuators</td><td id="s_nu">–</td></tr>
+            <tr><td>triangles</td><td id="s_tri">–</td></tr>
+          </table>
+        </section>
+      </div>
+    </dialog>
+
+    <noscript><div class="no-script">This simulation requires JavaScript.</div></noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
