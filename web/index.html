@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Male CNS LIF — Full Connectome</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"></div>
+    <header class="top">
+      <div class="brand">
+        <div class="brand-mark">♂CNS</div>
+        <div>
+          <h1>Male CNS Connectome LIF</h1>
+          <p class="tag">
+            Full Janelia Male CNS v1.0 · Shiu et al. leaky integrate-and-fire
+          </p>
+        </div>
+      </div>
+      <div class="stats" id="stats">
+        <div><span>neurons</span><strong id="stat-n">—</strong></div>
+        <div><span>synapses</span><strong id="stat-e">—</strong></div>
+        <div><span>types</span><strong id="stat-t">—</strong></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel load-panel" id="load-panel">
+        <h2>Connectome</h2>
+        <p class="hint">
+          Loads the complete proofread graph: every
+          <code>status==Traced</code> body and every synapse between those bodies
+          from
+          <a href="https://male-cns.janelia.org/download/" target="_blank" rel="noreferrer"
+            >male-cns.janelia.org</a
+          >
+          (annotations + neurotransmitters + connectome-weights minconf 0.5).
+        </p>
+        <button id="btn-load" class="primary">Load full connectome</button>
+        <div class="progress" id="load-progress" hidden>
+          <div class="bar"><i id="load-bar"></i></div>
+          <p id="load-label">Starting…</p>
+        </div>
+      </section>
+
+      <section class="panel controls" id="controls" hidden>
+        <h2>Stimulus</h2>
+        <div class="grid">
+          <label>
+            Excite (type / instance / bodyId)
+            <textarea id="excite" rows="3" placeholder="e.g. Mi1&#10;ORN_DA1&#10;or body IDs, one per line">Mi1</textarea>
+          </label>
+          <label>
+            Silence (optional)
+            <textarea id="silence" rows="3" placeholder="optional cell types or IDs"></textarea>
+          </label>
+          <label>
+            Poisson rate (Hz)
+            <input id="rate" type="number" min="1" max="500" value="150" />
+          </label>
+          <label>
+            Duration (ms)
+            <input id="duration" type="number" min="50" max="5000" step="50" value="200" />
+          </label>
+          <label>
+            Max excite N
+            <input id="max-excite" type="number" min="1" max="5000" value="100" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btn-resolve" class="ghost">Preview targets</button>
+          <button id="btn-run" class="primary">Run simulation</button>
+          <button id="btn-export" class="ghost" disabled>Export spikes CSV</button>
+        </div>
+        <p class="hint" id="resolve-out"></p>
+        <div class="progress" id="run-progress" hidden>
+          <div class="bar"><i id="run-bar"></i></div>
+          <p id="run-label">Simulating…</p>
+        </div>
+      </section>
+
+      <section class="panel viz" id="viz" hidden>
+        <div class="viz-head">
+          <h2>Activity</h2>
+          <p id="result-summary"></p>
+        </div>
+        <canvas id="raster" width="1200" height="420"></canvas>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rate (Hz)</th>
+                <th>Count</th>
+                <th>Type</th>
+                <th>Instance</th>
+                <th>NT</th>
+                <th>Body ID</th>
+              </tr>
+            </thead>
+            <tbody id="rate-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel refs">
+        <h2>Model &amp; data</h2>
+        <ul>
+          <li>
+            LIF parameters from
+            <a href="https://doi.org/10.1038/s41586-024-07763-9" target="_blank" rel="noreferrer"
+              >Shiu et al., Nature 2024</a
+            >
+            /
+            <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10187186/" target="_blank" rel="noreferrer"
+              >PMC10187186</a
+            >
+            · reference code
+            <a href="https://github.com/philshiu/Drosophila_brain_model" target="_blank" rel="noreferrer"
+              >philshiu/Drosophila_brain_model</a
+            >
+            ·
+            <a href="https://github.com/eonsystemspbc/fly-brain" target="_blank" rel="noreferrer"
+              >eonsystemspbc/fly-brain</a
+            >
+          </li>
+          <li>
+            Connectome:
+            <a href="https://www.janelia.org/project-team/flyem/male-cns-connectome" target="_blank" rel="noreferrer"
+              >Janelia FlyEM Male CNS</a
+            >
+            — GABA/glutamate inhibitory; ACh &amp; monoamines excitatory.
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

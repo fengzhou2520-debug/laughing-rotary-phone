@@ -1,0 +1,12 @@
+node_modules/
+web/node_modules/
+web/dist/
+.DS_Store
+*.pyc
+__pycache__/
+data/raw/
+data/processed/
+.venv/
+venv/
+.env
+*.log
