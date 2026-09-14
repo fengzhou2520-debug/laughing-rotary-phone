@@ -45,7 +45,7 @@ Raw feathers are downloaded from the public Janelia GCS bucket documented at [ma
 
 ## GitHub Pages
 
-The workflow in `.github/workflows/pages.yml` builds the Vite app and deploys `web/dist`. Enable **GitHub Pages** with the **GitHub Actions** source. The site base path is `/<repo-name>/`.
+The workflow in `.github/workflows/pages.yml` builds the Vite app and pushes it to the `gh-pages` branch. In **Settings → Pages → Build and deployment**, choose **Deploy from a branch**, then set branch to **`gh-pages`** / **`/` (root)**. The site base path is `/<repo-name>/`.
 
 ## Notes
 
