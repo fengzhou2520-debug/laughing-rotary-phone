@@ -1,6 +1,6 @@
 /**
  * Map Male CNS cell types / classes onto motor & sensory roles used to drive the body.
- * Male CNS includes the VNC, so leg motor neurons are real populations (not just DNs).
+ * Male CNS includes the VNC, so leg / wing / abdomen motor neurons are real populations.
  */
 
 function pushAll(out, idxs) {
@@ -44,16 +44,23 @@ export function buildRoles(neurons, typeIndex) {
     }
     return out;
   };
+  const typeList = (names) => {
+    const out = [];
+    for (const name of names) pushAll(out, typeIndex[name]);
+    return out;
+  };
 
-  // --- Sensory ---
+  // --- Sensory (full matching pools — every identified cell can receive stimulation) ---
   add("grn_sweet", typeIndex["claw_tpGRN"]);
   add("grn_sweet", typeIndex["dorsal_tpGRN"]);
-  // Extra tarsal sugar pool — keep small for realtime sugar drive
   add(
     "grn_sweet_leg",
-    typesMatching((t) => /^WG[1-4]$/.test(t)).slice(0, 120)
+    typesMatching((t) => /^WG[1-4]$/.test(t))
   );
-  add("grn_bitter", typesMatching((t) => /^LB[1-3]/.test(t)).slice(0, 60));
+  add(
+    "grn_bitter",
+    typesMatching((t) => /^LB[1-3]/.test(t))
+  );
   add(
     "orn",
     typesMatching((t) => t.startsWith("ORN_"))
@@ -92,7 +99,6 @@ export function buildRoles(neurons, typeIndex) {
       .concat(typeIndex["DNd01"] || [])
   );
 
-  // Side splits for asymmetric drives
   for (const [base, left, right] of [
     ["dn_steer", "dn_steer_l", "dn_steer_r"],
     ["dn_escwing", "dn_escwing_l", "dn_escwing_r"],
@@ -103,11 +109,9 @@ export function buildRoles(neurons, typeIndex) {
   }
 
   // --- Head / feeding motors (central brain motor neurons) ---
-  // CvN* = cervical (neck); numbered MN* / GNG* approximate feeding & antennal pools.
   const cbMotor = superclassOf("cb_motor");
   const neck = typesMatching((t) => /^CvN/.test(t));
   const antenna = typesMatching((t) => /^(MN10|MN11D|MN11V|MN12D|MN13|CEM)/.test(t));
-  // Feeding: numbered head MNs + a few SEZ/GNG motor labels (not every GNG*)
   const proboscis = typesMatching((t) =>
     /^(MN1|MN2Da|MN2Db|MN2V|MN3L|MN3M|MN4a|MN4b|MN5|MN6|MN7|MN8|MN9|MNx0[1-5]|PS348|PS349)$/.test(
       t
@@ -122,42 +126,67 @@ export function buildRoles(neurons, typeIndex) {
   add("mn_antenna_l", bySide(neurons, roles.mn_antenna || [], "L"));
   add("mn_antenna_r", bySide(neurons, roles.mn_antenna || [], "R"));
 
-  // --- Leg motor neurons (VNC — unique advantage of Male CNS) ---
-  const legFlex = []
-    .concat(typeIndex["Ti flexor MN"] || [])
-    .concat(typeIndex["Acc. ti flexor MN"] || [])
-    .concat(typeIndex["Tr flexor MN"] || [])
-    .concat(typeIndex["Acc. tr flexor MN"] || []);
-  const legExt = []
-    .concat(typeIndex["Ti extensor MN"] || [])
-    .concat(typeIndex["Tr extensor MN"] || [])
-    .concat(typeIndex["Fe reductor MN"] || []);
-  const legStance = []
-    .concat(typeIndex["Sternotrochanter MN"] || [])
-    .concat(typeIndex["Sternal anterior rotator MN"] || [])
-    .concat(typeIndex["Sternal posterior rotator MN"] || [])
-    .concat(typeIndex["Tergopleural/Pleural promotor MN"] || [])
-    .concat(typeIndex["Pleural remotor/abductor MN"] || []);
+  // --- Leg motor neurons (VNC) ---
+  const legFlex = typeList([
+    "Ti flexor MN",
+    "Acc. ti flexor MN",
+    "Tr flexor MN",
+    "Acc. tr flexor MN",
+  ]);
+  const legExt = typeList(["Ti extensor MN", "Tr extensor MN", "Fe reductor MN"]);
+  const legStance = typeList([
+    "Sternotrochanter MN",
+    "Sternal anterior rotator MN",
+    "Sternal posterior rotator MN",
+    "Tergopleural/Pleural promotor MN",
+    "Pleural remotor/abductor MN",
+    "Sternal adductor MN",
+    "Tergotr. MN",
+  ]);
+  const legTarsus = typeList(["Ta depressor MN", "Ta levator MN"]);
+  const legLtm = typeList(["ltm MN", "ltm1-tibia MN", "ltm2-femur MN"]);
   add("mn_leg_flex", legFlex);
   add("mn_leg_ext", legExt);
   add("mn_leg_stance", legStance);
-  add("mn_leg_flex_l", bySide(neurons, legFlex, "L"));
-  add("mn_leg_flex_r", bySide(neurons, legFlex, "R"));
-  add("mn_leg_ext_l", bySide(neurons, legExt, "L"));
-  add("mn_leg_ext_r", bySide(neurons, legExt, "R"));
+  add("mn_leg_tarsus", legTarsus);
+  add("mn_leg_ltm", legLtm);
+  for (const [base, left, right] of [
+    ["mn_leg_flex", "mn_leg_flex_l", "mn_leg_flex_r"],
+    ["mn_leg_ext", "mn_leg_ext_l", "mn_leg_ext_r"],
+    ["mn_leg_stance", "mn_leg_stance_l", "mn_leg_stance_r"],
+    ["mn_leg_tarsus", "mn_leg_tarsus_l", "mn_leg_tarsus_r"],
+    ["mn_leg_ltm", "mn_leg_ltm_l", "mn_leg_ltm_r"],
+  ]) {
+    const idxs = roles[base] || [];
+    add(left, bySide(neurons, idxs, "L"));
+    add(right, bySide(neurons, idxs, "R"));
+  }
 
-  // --- Wing power / steering muscles ---
+  // --- Wing power / steering muscles (VNC) ---
   add(
     "mn_wing",
     typesMatching(
       (t) =>
-        /^(b1|b2|b3|i1|i2|iii1|iii3|hg\d|ps\d|tp\d|TTMn|hDVM) MN$/.test(t) ||
+        /^(b1|b2|b3|i1|i2|iii1|iii3|hg\d|ps\d|tp\d|TTMn|hDVM|hi1|hi2|hiii2|tpn|STTMm) MN$/.test(
+          t
+        ) ||
         t === "TTMn" ||
-        t === "hDVM MN"
+        t === "hDVM MN" ||
+        t === "STTMm" ||
+        /^DLMn/.test(t) ||
+        /^DVMn/.test(t)
     )
   );
   add("mn_wing_l", bySide(neurons, roles.mn_wing || [], "L"));
   add("mn_wing_r", bySide(neurons, roles.mn_wing || [], "R"));
+
+  // --- Abdominal motor neurons (VNC) ---
+  add(
+    "mn_abdomen",
+    typesMatching((t) => /^(MNad|ADNM)/.test(t))
+  );
+  add("mn_abdomen_l", bySide(neurons, roles.mn_abdomen || [], "L"));
+  add("mn_abdomen_r", bySide(neurons, roles.mn_abdomen || [], "R"));
 
   // Deduplicate
   for (const k of Object.keys(roles)) {

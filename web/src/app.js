@@ -447,90 +447,103 @@ function resetSim() {
 }
 
 // ------------------------------------------------------------- brain -> body
-// Spike rate of an identified motor-neuron population -> position-servo target.
-// No policy, nothing learned, nothing scripted: each of these motor pools is individually
-// identified in FlyWire and the joint it drives physically exists in flybody.
+// Spike rate of an identified motor-neuron population -> FlyBody actuator target.
+// Male CNS includes brain + VNC, so leg / wing / abdomen motor neurons are real
+// pools (not only descending “command” cells). Every FlyBody actuator is driven.
 //
-//   proboscis_motor_neuron (24) -> rostrum / haustellum / labrum   (feeding)
-//   neck_motor_neuron      (26) -> head / head_twist / head_abduct (13 per side)
-//   antennal_motor_neuron  (10) -> antenna_* x6                    (5 per side)
+// Direct motor pools:
+//   mn_proboscis          -> rostrum / haustellum / labrum / labrum adhesion
+//   mn_neck_{l,r}         -> head / head_twist / head_abduct
+//   mn_antenna_{l,r}      -> antenna_* x6
+//   mn_wing_{l,r}         -> wing_yaw / roll / pitch (primary)
+//   mn_abdomen_{l,r}      -> abdomen / abdomen_abduct
+//   mn_leg_*              -> all coxa / femur / tibia / tarsus DOFs + claw adhesion
 //
-// COMMAND mappings are a DIFFERENT and weaker claim, kept visibly separate. FAFB is brain-only:
-// wing and leg motor neurons live in the ventral nerve cord, which is not in this dataset. A
-// descending neuron says "escape"; the posture it produces is supplied by us, not measured.
-//
-//   DNp02/04/11 'dn_escwing' (6) -> wing_roll / wing_yaw   (escape wing raise)
-//   DNg11       'dn_groom'   (6) -> abdomen                (grooming)
+// Descending overlays (modulate posture on top of the motor pools):
+//   dn_escwing / dn_steer / dn_groom / dn_walk
 //
 // `gain` is how many multiples of the RESTING rate map to full joint excursion. Resting rates
 // are measured at load by brain.calibrate() — they depend on the kernel, not just the wiring.
 const DRIVE = [
-  { act:'rostrum',              role:'mn_proboscis', gain:2.0, to:-1.24 },
-  { act:'haustellum',           role:'mn_proboscis', gain:2.0, to:-1.59 },
-  { act:'labrum_left',          role:'mn_proboscis', gain:2.0, to: 1.05 },
-  { act:'labrum_right',         role:'mn_proboscis', gain:2.0, to: 1.05 },
-  { act:'head',                 role:'mn_neck_r',    gain:3.0, to:-0.30 },
-  { act:'head_twist',           role:'mn_neck_r',    gain:2.0, to: 0.30 },
-  { act:'head_abduct',          role:'mn_neck_l',    gain:1.3, to: 0.20 },
-  { act:'antenna_left',         role:'mn_antenna_l', gain:4.0, to: 0.50 },
-  { act:'antenna_abduct_left',  role:'mn_antenna_l', gain:4.0, to: 0.80 },
-  { act:'antenna_twist_left',   role:'mn_antenna_l', gain:4.0, to: 0.09 },
-  { act:'antenna_right',        role:'mn_antenna_r', gain:4.0, to: 0.50 },
-  { act:'antenna_abduct_right', role:'mn_antenna_r', gain:4.0, to: 0.80 },
-  { act:'antenna_twist_right',  role:'mn_antenna_r', gain:4.0, to: 0.09 },
-  // --- command mappings (see note above): absolute-rate activation, silent at rest ---
-  // Wing actuators are FORCE generals (gainprm, no position bias) against very weak joint
-  // springs (stiffness 0.01). Measured torque balance: the usable control band is roughly
-  // ctrl in [-0.004, +0.010] — past that the joint pins against its stop and stops responding,
-  // which is what made the pose lock rigidly. A PD loop here is unstable (the actuator is far
-  // too strong relative to the spring), so this stays open-loop inside the proportional band.
-  // ctrl 0 = no torque = the spring's natural folded pose. Ranges below are measured.
-  // The wings sum THREE populations per joint (see applyBrainToActuators — several DRIVE rows
-  // may target one actuator and their contributions add). Escape alone gave only two states,
-  // because dn_escwing genuinely measures 0.0 +/- 0.0 Hz under every stimulus except looming —
-  // that is the real data, not a wiring gap. The life comes from adding pools that are actually
-  // active at rest.
-  //
-  // WINGCLAMP keeps the sum inside the measured proportional band; past it the joint pins
-  // against its stop and stops responding to the neurons at all.
-  //
-  // (a) postural / idle -- DNa01+DNa02 steering DNs. Measured at rest: L 70.2 +/- 19.6 Hz,
-  //     R 54.3 +/- 18.6 Hz. Large jitter AND a real standing left/right asymmetry, which
-  //     INVERTS under touch (L 38.5, R 58.9) -- so the wings visibly re-trim. Steering DNs
-  //     modulating left/right wing amplitude asymmetrically is their documented function, so
-  //     side->side is the correct mapping rather than an arbitrary one. Deliberately small
-  //     amplitude: a resting fly adjusts its wings, it does not flap them.
-  { act:'wing_yaw_left',    role:'dn_steer_l',   band:[20,110], raw:[0, -0.0018], cmd:true },
-  { act:'wing_yaw_right',   role:'dn_steer_r',   band:[20,110], raw:[0, -0.0018], cmd:true },
-  { act:'wing_roll_left',   role:'dn_steer_l',   band:[20,110], raw:[0,  0.0010], cmd:true },
-  { act:'wing_roll_right',  role:'dn_steer_r',   band:[20,110], raw:[0,  0.0010], cmd:true },
-  // (b) grooming flutter -- DNg11. 22.9 +/- 6.8 Hz at rest, 33.8 Hz on touch (+48%). Flies
-  //     groom their wings with the hind legs; a pitch twitch is the visible correlate.
-  { act:'wing_pitch_left',  role:'dn_groom',     band:[8,45],   raw:[0,  0.0030], cmd:true },
-  { act:'wing_pitch_right', role:'dn_groom',     band:[8,45],   raw:[0,  0.0030], cmd:true },
-  // (c) escape deploy -- DNp02/04/11. Silent at rest, 221 Hz (L) / 170 Hz (R) on looming; note
-  //     even the escape response is naturally asymmetric between the two sides.
-  { act:'wing_roll_left',   role:'dn_escwing_l', peak:300, raw:[0,  0.0030], cmd:true },
-  { act:'wing_roll_right',  role:'dn_escwing_r', peak:300, raw:[0,  0.0030], cmd:true },
-  { act:'wing_yaw_left',    role:'dn_escwing_l', peak:300, raw:[0, -0.0035], cmd:true },
-  { act:'wing_yaw_right',   role:'dn_escwing_r', peak:300, raw:[0, -0.0035], cmd:true },
-  { act:'wing_pitch_left',  role:'dn_escwing_l', peak:300, raw:[0,  0.0080], cmd:true },
-  { act:'wing_pitch_right', role:'dn_escwing_r', peak:300, raw:[0,  0.0080], cmd:true },
-  { act:'abdomen',          role:'dn_groom',     gain:1.5, to:-0.15, cmd:true },
+  { act: "rostrum", role: "mn_proboscis", gain: 2.0, to: -1.24 },
+  { act: "haustellum", role: "mn_proboscis", gain: 2.0, to: -1.59 },
+  { act: "haustellum_abduct", role: "mn_proboscis", gain: 2.5, to: 0.087 },
+  { act: "labrum_left", role: "mn_proboscis", gain: 2.0, to: 1.05 },
+  { act: "labrum_right", role: "mn_proboscis", gain: 2.0, to: 1.05 },
+  { act: "adhere_labrum_left", role: "mn_proboscis", gain: 2.0, to: 1.0 },
+  { act: "adhere_labrum_right", role: "mn_proboscis", gain: 2.0, to: 1.0 },
+  { act: "head", role: "mn_neck_r", gain: 3.0, to: -0.30 },
+  { act: "head_twist", role: "mn_neck_r", gain: 2.0, to: 0.30 },
+  { act: "head_abduct", role: "mn_neck_l", gain: 1.3, to: 0.20 },
+  { act: "antenna_left", role: "mn_antenna_l", gain: 4.0, to: 0.50 },
+  { act: "antenna_abduct_left", role: "mn_antenna_l", gain: 4.0, to: 0.80 },
+  { act: "antenna_twist_left", role: "mn_antenna_l", gain: 4.0, to: 0.09 },
+  { act: "antenna_right", role: "mn_antenna_r", gain: 4.0, to: 0.50 },
+  { act: "antenna_abduct_right", role: "mn_antenna_r", gain: 4.0, to: 0.80 },
+  { act: "antenna_twist_right", role: "mn_antenna_r", gain: 4.0, to: 0.09 },
+  // Abdominal MNs (primary) + grooming DN overlay
+  { act: "abdomen", role: "mn_abdomen", gain: 2.0, to: -0.15 },
+  { act: "abdomen_abduct", role: "mn_abdomen_l", gain: 2.0, to: 0.25 },
+  { act: "abdomen_abduct", role: "mn_abdomen_r", gain: 2.0, to: -0.25 },
+  { act: "abdomen", role: "dn_groom", gain: 1.5, to: -0.15, cmd: true },
+  // Wing actuators are FORCE generals. Usable ctrl band ≈ [-0.004, +0.010].
+  // Primary drive: VNC wing motor neurons. Overlays: steer / groom / escape DNs.
+  { act: "wing_yaw_left", role: "mn_wing_l", band: [5, 80], raw: [0, -0.0022] },
+  { act: "wing_yaw_right", role: "mn_wing_r", band: [5, 80], raw: [0, -0.0022] },
+  { act: "wing_roll_left", role: "mn_wing_l", band: [5, 80], raw: [0, 0.0014] },
+  { act: "wing_roll_right", role: "mn_wing_r", band: [5, 80], raw: [0, 0.0014] },
+  { act: "wing_pitch_left", role: "mn_wing_l", band: [5, 80], raw: [0, 0.0020] },
+  { act: "wing_pitch_right", role: "mn_wing_r", band: [5, 80], raw: [0, 0.0020] },
+  { act: "wing_yaw_left", role: "dn_steer_l", band: [20, 110], raw: [0, -0.0018], cmd: true },
+  { act: "wing_yaw_right", role: "dn_steer_r", band: [20, 110], raw: [0, -0.0018], cmd: true },
+  { act: "wing_roll_left", role: "dn_steer_l", band: [20, 110], raw: [0, 0.0010], cmd: true },
+  { act: "wing_roll_right", role: "dn_steer_r", band: [20, 110], raw: [0, 0.0010], cmd: true },
+  { act: "wing_pitch_left", role: "dn_groom", band: [8, 45], raw: [0, 0.0030], cmd: true },
+  { act: "wing_pitch_right", role: "dn_groom", band: [8, 45], raw: [0, 0.0030], cmd: true },
+  { act: "wing_roll_left", role: "dn_escwing_l", peak: 300, raw: [0, 0.0030], cmd: true },
+  { act: "wing_roll_right", role: "dn_escwing_r", peak: 300, raw: [0, 0.0030], cmd: true },
+  { act: "wing_yaw_left", role: "dn_escwing_l", peak: 300, raw: [0, -0.0035], cmd: true },
+  { act: "wing_yaw_right", role: "dn_escwing_r", peak: 300, raw: [0, -0.0035], cmd: true },
+  { act: "wing_pitch_left", role: "dn_escwing_l", peak: 300, raw: [0, 0.0080], cmd: true },
+  { act: "wing_pitch_right", role: "dn_escwing_r", peak: 300, raw: [0, 0.0080], cmd: true },
 ];
 let driveMap = [];
-let driveGroups = [];          // [actuatorIndex, entries[]] — several pools may drive one joint
-const WINGCLAMP = [-0.0055, 0.0105];   // measured usable band; past this the joint pins
+let driveGroups = []; // [actuatorIndex, entries[]] — several pools may drive one joint
+const WINGCLAMP = [-0.0055, 0.0105]; // measured usable band; past this the joint pins
+const ALL_ACTUATOR_NAMES = [
+  "head_abduct", "head_twist", "head", "rostrum", "haustellum_abduct", "haustellum",
+  "labrum_left", "labrum_right",
+  "antenna_abduct_left", "antenna_twist_left", "antenna_left",
+  "antenna_abduct_right", "antenna_twist_right", "antenna_right",
+  "wing_yaw_left", "wing_roll_left", "wing_pitch_left",
+  "wing_yaw_right", "wing_roll_right", "wing_pitch_right",
+  "abdomen_abduct", "abdomen",
+  "coxa_abduct_T1_left", "coxa_twist_T1_left", "coxa_T1_left", "femur_twist_T1_left",
+  "femur_T1_left", "tibia_T1_left", "tarsus_T1_left", "tarsus2_T1_left",
+  "coxa_abduct_T1_right", "coxa_twist_T1_right", "coxa_T1_right", "femur_twist_T1_right",
+  "femur_T1_right", "tibia_T1_right", "tarsus_T1_right", "tarsus2_T1_right",
+  "coxa_abduct_T2_left", "coxa_twist_T2_left", "coxa_T2_left", "femur_twist_T2_left",
+  "femur_T2_left", "tibia_T2_left", "tarsus_T2_left", "tarsus2_T2_left",
+  "coxa_abduct_T2_right", "coxa_twist_T2_right", "coxa_T2_right", "femur_twist_T2_right",
+  "femur_T2_right", "tibia_T2_right", "tarsus_T2_right", "tarsus2_T2_right",
+  "coxa_abduct_T3_left", "coxa_twist_T3_left", "coxa_T3_left", "femur_twist_T3_left",
+  "femur_T3_left", "tibia_T3_left", "tarsus_T3_left", "tarsus2_T3_left",
+  "coxa_abduct_T3_right", "coxa_twist_T3_right", "coxa_T3_right", "femur_twist_T3_right",
+  "femur_T3_right", "tibia_T3_right", "tarsus_T3_right", "tarsus2_T3_right",
+  "adhere_labrum_left", "adhere_labrum_right",
+  "adhere_claw_T1_left", "adhere_claw_T1_right",
+  "adhere_claw_T2_left", "adhere_claw_T2_right",
+  "adhere_claw_T3_left", "adhere_claw_T3_right",
+];
 
 // Purely cosmetic resting offset. The folded pose clips the wings through the abdomen, so lift
 // them (roll+) and sweep them outward (yaw-) a little. This is a constant added to the base,
 // ON TOP of whatever the neurons are doing — it shifts the resting posture without touching any
 // neural mapping, so every response above still plays out from the new rest position.
-// Signs follow the measured ctrl->angle curves: roll+ raises, yaw- sweeps outward.
 const WINGBIAS = {
-  wing_roll_left:   0.0012, wing_roll_right:  0.0012,
-  wing_yaw_left:   -0.0012, wing_yaw_right:  -0.0012,
-  wing_pitch_left:  0.0000, wing_pitch_right: 0.0000,
+  wing_roll_left: 0.0012, wing_roll_right: 0.0012,
+  wing_yaw_left: -0.0012, wing_yaw_right: -0.0012,
+  wing_pitch_left: 0.0000, wing_pitch_right: 0.0000,
 };
 function buildDriveMap(m, b) {
   driveMap = DRIVE
@@ -549,12 +562,6 @@ function buildDriveMap(m, b) {
   driveGroups = [...byAct.entries()];
 }
 
-// Three activation modes, one per kind of population:
-//   peak — pools silent at rest (escape DNs): absolute rate / peak.
-//   band — pools with a real resting rate (steering, grooming): a fixed window shared by both
-//          sides, so the natural left/right rate difference survives real pose difference
-//          rather than being normalised away.
-//   gain — ratio to each pool's own measured resting rate (the motor-neuron pools).
 function activation(b, k) {
   let a;
   if (k.peak)      a = b.rate[k.role] / k.peak;
@@ -567,11 +574,15 @@ function activation(b, k) {
   return a < 0 ? 0 : a > 1 ? 1 : a;
 }
 
+function rateNorm(b, role, scale = 80) {
+  return Math.max(0, Math.min(1, Math.max(0, b.rate[role] || 0) / scale));
+}
+
 let neural = true;
 function applyBrainToActuators(b, d) {
   for (const [ai, entries] of driveGroups) {
     const first = entries[0];
-    const base = (first.raw ? first.raw[0] : holdCtrl[ai]) + (WINGBIAS[first.act] || 0);
+    const base = (first.raw ? first.raw[0] : holdCtrl[ai] || 0) + (WINGBIAS[first.act] || 0);
     if (!neural) { d.ctrl[ai] = base; continue; }
     let v = base;
     for (const k of entries) {
@@ -579,7 +590,7 @@ function applyBrainToActuators(b, d) {
       if (k.raw) v += a * (k.raw[1] - k.raw[0]);
       else {
         if (k.to === undefined) throw new Error(`drive ${k.act} has no target`);
-        v += a * (k.to - holdCtrl[ai]);
+        v += a * (k.to - (holdCtrl[ai] || 0));
       }
     }
     if (first.raw) v = Math.max(WINGCLAMP[0], Math.min(WINGCLAMP[1], v));
@@ -588,12 +599,13 @@ function applyBrainToActuators(b, d) {
 }
 
 // ------------------------------------------------------------- neural walking gait
-// Male CNS includes VNC leg motor neurons. Flexor / extensor rates pace a tripod gait;
-// grooming DNs and steering DNs still bias timing and lift. Free-joint translation lets
-// the fly walk around the terrarium when leg drive is high.
+// Male CNS includes VNC leg motor neurons. Flexor / extensor / stance / tarsus / LTM
+// rates drive EVERY leg DOF (coxa through tarsus + claw adhesion). A tripod gait paces
+// swing/stance; free-joint translation lets the fly walk when leg drive is high.
 let shuffleLegs = [];
 let freeJnt = -1;
 let freeQvel = -1;
+let drivenActuatorIds = new Set();
 const shuffle = {
   enabled: true,
   active: -1,
@@ -606,44 +618,84 @@ const shuffle = {
   count: 0,
 };
 
+function legJointSpec(name) {
+  const T = name.startsWith("T1") ? 1 : name.startsWith("T2") ? 2 : 3;
+  const swing = {
+    coxa_abduct: T === 2 ? 0.12 : 0.18,
+    coxa_twist: T === 1 ? 0.22 : 0.16,
+    coxa: T === 1 ? 0.28 : 0.22,
+    femur_twist: 0.12,
+    femur: T === 1 ? -0.34 : T === 2 ? -0.26 : -0.3,
+    tibia: T === 1 ? -0.26 : T === 2 ? -0.22 : -0.25,
+    tarsus: 0.2,
+    tarsus2: 0.14,
+  };
+  const joints = [
+    "coxa_abduct", "coxa_twist", "coxa", "femur_twist", "femur", "tibia", "tarsus", "tarsus2",
+  ].map((joint) => {
+    const act = `${joint}_${name}`;
+    const ai = mujoco.mj_name2id(model, 19, act);
+    if (ai < 0) throw new Error(`missing leg actuator ${act}`);
+    return { ai, act, offset: swing[joint] };
+  });
+  const claw = `adhere_claw_${name}`;
+  const clawAi = mujoco.mj_name2id(model, 19, claw);
+  if (clawAi < 0) throw new Error(`missing claw actuator ${claw}`);
+  return { joints, clawAi };
+}
+
 function buildShuffleMap() {
   freeJnt = mujoco.mj_name2id(model, 3 /* mjOBJ_JOINT */, "free");
   freeQvel = freeJnt >= 0 ? model.jnt_dofadr[freeJnt] : -1;
   const order = ["T1_left", "T3_right", "T2_left", "T1_right", "T3_left", "T2_right"];
   shuffleLegs = order.map((name) => {
-    const offsets = name.startsWith("T1")
-      ? [-0.34, -0.26]
-      : name.startsWith("T2")
-        ? [-0.26, -0.22]
-        : [-0.30, -0.25];
-    const joints = ["femur", "tibia"].map((joint, i) => {
-      const ai = mujoco.mj_name2id(model, 19, `${joint}_${name}`);
-      if (ai < 0) throw new Error(`missing shuffle actuator ${joint}_${name}`);
-      return { ai, offset: offsets[i] };
-    });
     const sideLeft = name.endsWith("left");
+    const { joints, clawAi } = legJointSpec(name);
     return {
       name,
       role: sideLeft ? "dn_steer_l" : "dn_steer_r",
       flexRole: sideLeft ? "mn_leg_flex_l" : "mn_leg_flex_r",
+      extRole: sideLeft ? "mn_leg_ext_l" : "mn_leg_ext_r",
+      stanceRole: sideLeft ? "mn_leg_stance_l" : "mn_leg_stance_r",
+      tarsusRole: sideLeft ? "mn_leg_tarsus_l" : "mn_leg_tarsus_r",
+      ltmRole: sideLeft ? "mn_leg_ltm_l" : "mn_leg_ltm_r",
       joints,
+      clawAi,
       amount: 0,
     };
   });
+  drivenActuatorIds = new Set();
+  for (const d of driveMap) drivenActuatorIds.add(d.ai);
+  for (const leg of shuffleLegs) {
+    for (const j of leg.joints) drivenActuatorIds.add(j.ai);
+    drivenActuatorIds.add(leg.clawAi);
+  }
+  const missing = [];
+  for (const name of ALL_ACTUATOR_NAMES) {
+    const ai = mujoco.mj_name2id(model, 19, name);
+    if (ai < 0) missing.push(`${name} (absent)`);
+    else if (!drivenActuatorIds.has(ai)) missing.push(name);
+  }
+  if (missing.length) {
+    console.warn("actuators not mapped to brain signals:", missing.join(", "));
+  } else {
+    console.info(`brain→body: all ${ALL_ACTUATOR_NAMES.length} FlyBody actuators mapped`);
+  }
   resetShuffle();
 }
 
 function resetShuffle() {
   Object.assign(shuffle, {
-    active: -1,
-    next: 0,
-    phase: 0,
-    charge: 0,
-    cooldown: 0.35,
-    strength: 0,
-    count: 0,
+    active: -1, next: 0, phase: 0, charge: 0, cooldown: 0.35, strength: 0, count: 0,
   });
   for (const leg of shuffleLegs) leg.amount = 0;
+}
+
+function clampAct(ai, value) {
+  const lo = model.actuator_ctrlrange[2 * ai];
+  const hi = model.actuator_ctrlrange[2 * ai + 1];
+  if (!(hi > lo)) return Math.max(0, Math.min(1, value));
+  return Math.max(lo, Math.min(hi, value));
 }
 
 function stepShuffle(b, d, dt) {
@@ -652,10 +704,17 @@ function stepShuffle(b, d, dt) {
     Math.max(0, b.rate.mn_leg_flex || 0) +
     Math.max(0, b.rate.mn_leg_flex_l || 0) +
     Math.max(0, b.rate.mn_leg_flex_r || 0);
-  const ext = Math.max(0, b.rate.mn_leg_ext || 0);
+  const ext =
+    Math.max(0, b.rate.mn_leg_ext || 0) +
+    Math.max(0, b.rate.mn_leg_ext_l || 0) +
+    Math.max(0, b.rate.mn_leg_ext_r || 0);
+  const stance =
+    Math.max(0, b.rate.mn_leg_stance || 0) +
+    Math.max(0, b.rate.mn_leg_stance_l || 0) +
+    Math.max(0, b.rate.mn_leg_stance_r || 0);
   const groom = Math.max(0, b.rate.dn_groom || 0);
   const walkCmd = Math.max(0, b.rate.dn_walk || 0);
-  const legDrive = flex * 0.55 + ext * 0.25 + groom * 0.35 + walkCmd * 0.8;
+  const legDrive = flex * 0.45 + ext * 0.25 + stance * 0.2 + groom * 0.25 + walkCmd * 0.8;
 
   if (!enabled) {
     shuffle.active = -1;
@@ -695,25 +754,45 @@ function stepShuffle(b, d, dt) {
         ? shuffle.strength * Math.sin(Math.PI * shuffle.phase) ** 2
         : 0;
     leg.amount += (target - leg.amount) * blend;
-    for (const { ai, offset } of leg.joints) {
-      d.ctrl[ai] = Math.max(
-        model.actuator_ctrlrange[2 * ai],
-        Math.min(
-          model.actuator_ctrlrange[2 * ai + 1],
-          holdCtrl[ai] + offset * leg.amount
-        )
-      );
+
+    const flexA = rateNorm(b, leg.flexRole, 90);
+    const extA = rateNorm(b, leg.extRole, 70);
+    const stanceA = rateNorm(b, leg.stanceRole, 60);
+    const tarsA = rateNorm(b, leg.tarsusRole, 50);
+    const ltmA = rateNorm(b, leg.ltmRole, 50);
+    const swing = enabled ? leg.amount : 0;
+    const posture = {
+      coxa_abduct: stanceA * 0.08 + swing,
+      coxa_twist: stanceA * 0.1 + swing,
+      coxa: stanceA * 0.12 + extA * 0.06 + swing,
+      femur_twist: stanceA * 0.08 + ltmA * 0.05 + swing,
+      femur: flexA * -0.12 + extA * 0.08 + swing,
+      tibia: flexA * -0.1 + extA * 0.07 + swing,
+      tarsus: tarsA * 0.12 + ltmA * 0.06 + swing,
+      tarsus2: tarsA * 0.1 + swing,
+    };
+
+    for (const { ai, offset, act } of leg.joints) {
+      const key = act.replace(`_${leg.name}`, "");
+      const scale = posture[key] ?? swing;
+      const delta =
+        key === "femur" || key === "tibia"
+          ? offset * (swing + flexA * 0.35) + Math.abs(offset) * extA * 0.25
+          : offset * scale;
+      d.ctrl[ai] = clampAct(ai, (holdCtrl[ai] || 0) + delta);
     }
+    const cling = enabled
+      ? Math.max(0, 1 - swing * 1.35) * (0.35 + 0.65 * (0.4 + stanceA + extA))
+      : 0;
+    d.ctrl[leg.clawAi] = clampAct(leg.clawAi, cling);
   }
 
-  // Translate the free root when the gait is active so the fly walks around.
   if (enabled && freeQvel >= 0 && legDrive > 8) {
     const qadr = model.jnt_qposadr[freeJnt];
     const qw = d.qpos[qadr + 3];
     const qx = d.qpos[qadr + 4];
     const qy = d.qpos[qadr + 5];
     const qz = d.qpos[qadr + 6];
-    // Heading from quaternion (flybody faces +X).
     const fx = 1 - 2 * (qy * qy + qz * qz);
     const fy = 2 * (qx * qy + qw * qz);
     const steerL = b.rate.dn_steer_l || 0;

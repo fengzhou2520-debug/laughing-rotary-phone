@@ -21,9 +21,9 @@ Current build: **165,122 neurons · 25,563,197 synapses · 11,751 cell types**.
 ### Embodiment
 
 - Continuous sugar stimulation of gustatory receptor neurons
-- Proboscis / neck / antennal / wing actuators driven by identified motor & descending pools
-- Tripod-style walking from VNC leg flexor/extensor rates, with free-joint translation so the fly walks around the terrarium
-- Adaptive quality scaler for realtime performance
+- **All 78 FlyBody actuators** driven from identified Male CNS motor & descending pools (head, feeding, antennae, wings, abdomen, every leg DOF, labrum/claw adhesion)
+- Tripod-style walking from VNC leg flexor / extensor / stance / tarsus / LTM rates, with free-joint translation so the fly walks around the terrarium
+- Adaptive quality scaler for realtime performance (rendering only — the LIF still steps every Traced neuron and every synapse)
 
 Realtime kernel uses 1&nbsp;ms steps (infinite-sugar / desktop-fly style) on the Male CNS CSR wiring. Batch Shiu-parameter LIF (`web/src/lif.js`) remains available for offline smoke tests.
 

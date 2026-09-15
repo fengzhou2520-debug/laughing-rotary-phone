@@ -110,8 +110,16 @@ export class Brain {
       "mn_leg_flex_r",
       "mn_leg_ext_l",
       "mn_leg_ext_r",
+      "mn_leg_stance_l",
+      "mn_leg_stance_r",
+      "mn_leg_tarsus_l",
+      "mn_leg_tarsus_r",
+      "mn_leg_ltm_l",
+      "mn_leg_ltm_r",
       "mn_wing_l",
       "mn_wing_r",
+      "mn_abdomen_l",
+      "mn_abdomen_r",
       "dn_escwing_l",
       "dn_escwing_r",
       "dn_steer_l",
@@ -134,7 +142,11 @@ export class Brain {
       "mn_antenna",
       "mn_leg_flex",
       "mn_leg_ext",
+      "mn_leg_stance",
+      "mn_leg_tarsus",
+      "mn_leg_ltm",
       "mn_wing",
+      "mn_abdomen",
       "dn_steer",
       "dn_escwing",
     ]);
@@ -182,7 +194,7 @@ export class Brain {
       fetchGz(`${base}/${files.type_index}`, report("type index")),
     ]);
 
-    say("unpacking weights");
+    say("unpacking full Male CNS CSR");
     const indptr = new Uint32Array(
       indptrBuf.buffer,
       indptrBuf.byteOffset,
@@ -194,6 +206,21 @@ export class Brain {
       colBuf.byteLength / 4
     );
     const w2 = new Int16Array(wBuf.buffer, wBuf.byteOffset, wBuf.byteLength / 2);
+    if (indptr.length !== meta.n_neurons + 1) {
+      throw new Error(
+        `row_ptr length ${indptr.length} != n_neurons+1 (${meta.n_neurons + 1})`
+      );
+    }
+    if (colidx.length !== meta.n_synapses || w2.length !== meta.n_synapses) {
+      throw new Error(
+        `synapse arrays ${colidx.length}/${w2.length} != n_synapses ${meta.n_synapses}`
+      );
+    }
+    if (indptr[meta.n_neurons] !== meta.n_synapses) {
+      throw new Error(
+        `CSR row_ptr end ${indptr[meta.n_neurons]} != n_synapses ${meta.n_synapses}`
+      );
+    }
     const w = new Float32Array(w2.length);
     const k = WSCALE;
     for (let i = 0; i < w2.length; i++) w[i] = w2[i] * k;
@@ -204,6 +231,11 @@ export class Brain {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
+    if (neurons.length !== meta.n_neurons) {
+      throw new Error(
+        `neuron catalog ${neurons.length} != n_neurons ${meta.n_neurons}`
+      );
+    }
     const typeIndex = JSON.parse(new TextDecoder().decode(typeBuf));
     const roles = buildRoles(neurons, typeIndex);
 
@@ -233,6 +265,11 @@ export class Brain {
         "dn_groom",
         "mn_leg_flex",
         "mn_leg_ext",
+        "mn_leg_stance",
+        "mn_leg_tarsus",
+        "mn_leg_ltm",
+        "mn_wing",
+        "mn_abdomen",
         "pam",
       ]) {
         const g = this.groups[r];
@@ -336,15 +373,9 @@ export class Brain {
 
       const is = (slot + INH_DELAY) % INH_SLOTS;
       const iq = inhVal[is];
-      const iqi = inhIdx[is];
+      let iqi2 = this.inhIdx[is];
       let ic = inhCnt[is];
-      // Grow inhIdx buffers if needed
-      if (ic + ns * 8 > iqi.length) {
-        const bigger = new Int32Array(Math.min(N, iqi.length * 2));
-        bigger.set(iqi.subarray(0, ic));
-        this.inhIdx[is] = bigger;
-      }
-      const iqi2 = this.inhIdx[is];
+      // Deliver every outgoing synapse of every spiking neuron (full Male CNS CSR).
       for (let s = 0; s < ns; s++) {
         const i = spiked[s];
         const a = indptr[i];
@@ -357,7 +388,14 @@ export class Brain {
             v[j] = nv < -2 ? -2 : nv;
           } else {
             if (iq[j] === 0) {
-              if (ic >= iqi2.length) break;
+              if (ic >= iqi2.length) {
+                const bigger = new Int32Array(
+                  Math.min(N, Math.max(iqi2.length * 2, ic + 1024))
+                );
+                bigger.set(iqi2.subarray(0, ic));
+                this.inhIdx[is] = bigger;
+                iqi2 = bigger;
+              }
               iqi2[ic++] = j;
             }
             iq[j] += x;
@@ -384,10 +422,13 @@ export class Brain {
       this.rate.mn_ingestion = this.rate.mn_proboscis || 0;
       this.rate.mn_neck = avg("mn_neck_l", "mn_neck_r");
       this.rate.mn_antenna = avg("mn_antenna_l", "mn_antenna_r");
-      this.rate.mn_leg_flex =
-        ((this.rate.mn_leg_flex_l || 0) + (this.rate.mn_leg_flex_r || 0)) / 2;
-      this.rate.mn_leg_ext =
-        ((this.rate.mn_leg_ext_l || 0) + (this.rate.mn_leg_ext_r || 0)) / 2;
+      this.rate.mn_leg_flex = avg("mn_leg_flex_l", "mn_leg_flex_r");
+      this.rate.mn_leg_ext = avg("mn_leg_ext_l", "mn_leg_ext_r");
+      this.rate.mn_leg_stance = avg("mn_leg_stance_l", "mn_leg_stance_r");
+      this.rate.mn_leg_tarsus = avg("mn_leg_tarsus_l", "mn_leg_tarsus_r");
+      this.rate.mn_leg_ltm = avg("mn_leg_ltm_l", "mn_leg_ltm_r");
+      this.rate.mn_wing = avg("mn_wing_l", "mn_wing_r");
+      this.rate.mn_abdomen = avg("mn_abdomen_l", "mn_abdomen_r");
       this.rate.dn_steer = avg("dn_steer_l", "dn_steer_r");
       this.rate.dn_escwing = avg("dn_escwing_l", "dn_escwing_r");
       const feeding =
