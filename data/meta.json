@@ -1,0 +1,39 @@
+{
+  "n_neurons": 165122,
+  "n_synapses": 25563197,
+  "source": "male-cns-v1.0-minconf-0.5",
+  "neuron_filter": "status==Traced",
+  "model": "Shiu et al. LIF (Nature 2024)",
+  "w_syn_mV": 0.275,
+  "dt_ms": 0.1,
+  "params": {
+    "v0": -52.0,
+    "vReset": -52.0,
+    "vRest": -52.0,
+    "vThreshold": -45.0,
+    "tauMem": 20.0,
+    "tauSyn": 5.0,
+    "tRefrac": 2.2,
+    "tDelay": 1.8,
+    "scalePoisson": 250,
+    "wScale": 0.275
+  },
+  "inhibitory_nts": [
+    "gaba",
+    "glutamate"
+  ],
+  "files": {
+    "row_ptr": "csr_row_ptr.u32.bin",
+    "col_idx": "csr_col_idx.u32.bin",
+    "weights": "csr_weights.i16.bin",
+    "body_ids": "body_ids.u64.bin",
+    "signs": "signs.i8.bin",
+    "neurons_meta": "neurons.jsonl.bin",
+    "type_index": "type_index.json.bin",
+    "meta": "meta.json"
+  },
+  "weight_dtype": "int16",
+  "citation": "https://doi.org/10.1038/s41586-024-07763-9",
+  "data_url": "https://male-cns.janelia.org/download/",
+  "compression": "gzip-in-bin"
+}
