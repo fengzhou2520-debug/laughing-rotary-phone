@@ -103,13 +103,30 @@
             </svg>
           </button>
           <button
+            id="b_food"
+            class="text-button tool-button"
+            aria-pressed="false"
+            title="Click the ground to place sugar food"
+          >
+            Place food
+          </button>
+          <label class="env-select">
+            <span class="visually-hidden">Environment</span>
+            <select id="env-mode" aria-label="Environment">
+              <option value="terrarium">Terrarium</option>
+              <option value="flat">Flat plane</option>
+              <option value="nil">Nil space</option>
+              <option value="nil-plane">Nil plane</option>
+            </select>
+          </label>
+          <button
             id="b_sugar"
-            class="sugar-button on"
+            class="sugar-button"
             data-stim="sweet"
-            aria-pressed="true"
+            aria-pressed="false"
           >
             <span class="sugar-dot" aria-hidden="true"></span>
-            <span id="sugar-label">Sugar on</span>
+            <span id="sugar-label">Sugar bath</span>
           </button>
         </div>
         <button id="b_inspect" class="text-button inspect-button" aria-haspopup="dialog">
@@ -130,16 +147,22 @@
           >Janelia Male CNS v1.0</a
         >
         proofread connectome — every traced neuron and synapse, including the ventral nerve cord.
-        Sweet-sensing gustatory neurons are continuously stimulated. Head, antennae, wings and
-        feeding follow identified motor and descending pools; walking is paced by real leg motor
-        neurons in the VNC.
+        Place sugar food in the scene (or enable a sugar bath): only gustatory receptor neurons
+        are stimulated; feeding and walking emerge from synaptic propagation through the full
+        network. Environments include the terrarium, a flat plane, and
+        <a href="https://3-dimensional.space/geometries/nil/" target="_blank" rel="noreferrer"
+          >Nil geometry</a
+        >.
       </p>
       <details class="work-notes">
         <summary>Technical summary</summary>
         <p>
           Realtime LIF kernel (1&nbsp;ms steps) on the full Male CNS CSR graph
           (<span id="about-n">165,122</span> neurons ·
-          <span id="about-e">25,563,197</span> synapses). Parameters inspired by
+          <span id="about-e">25,563,197</span> synapses). Every neuron is integrated
+          each step; every synapse from every spike is delivered. Sugar stimulates only
+          gustatory receptors — motor pools are recruited by network propagation.
+          Parameters inspired by
           <a href="https://doi.org/10.1038/s41586-024-07763-9" target="_blank" rel="noreferrer"
             >Shiu et al., Nature 2024</a
           >
@@ -176,6 +199,9 @@
             <tr><td>synapses</td><td id="s_syn">–</td></tr>
             <tr><td>brain time</td><td id="s_bms">–</td></tr>
             <tr><td>whole CNS</td><td id="s_pop">–</td></tr>
+            <tr><td>spikes / ms</td><td id="s_spk">–</td></tr>
+            <tr><td>synapse events / ms</td><td id="s_syne">–</td></tr>
+            <tr><td>food drive</td><td id="s_food">–</td></tr>
             <tr><td>sweet GRN</td><td id="s_grn">–</td></tr>
             <tr><td>proboscis MN</td><td id="s_mnp">–</td></tr>
             <tr><td>ingestion MN</td><td id="s_mni">–</td></tr>

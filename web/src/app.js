@@ -8,6 +8,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Brain } from "./brain.js";
 import { createActivityHud } from "./activityHud.js";
 import { AdaptiveQuality } from "./performance.js";
+import { createFoodSystem } from "./food.js";
+import { createEnvironmentController, tagEnvProp } from "./environments.js";
 import * as CANNON from "cannon-es";
 import { modelBase } from "./paths.js";
 
@@ -250,6 +252,7 @@ async function loadProps(scene, flyBox) {
     }
     wrap.rotation.z = p.rot;
     wrap.traverse(n => { if (n instanceof THREE.Mesh) { n.castShadow = true; n.receiveShadow = true; } });
+    tagEnvProp(wrap);
     scene.add(wrap);
     propObjs[p.file] = wrap;
   }
@@ -808,7 +811,9 @@ function stepShuffle(b, d, dt) {
 function stepSimulation() {
   mujoco.mj_step(model, data);
   sim.steps++;
-  if (sim.steps % 10 === 0) {
+  // Full-network LIF every few physics steps. Each brain.step walks every neuron
+  // and delivers every outgoing synapse of every spike (full Male CNS CSR).
+  if (sim.steps % 8 === 0) {
     brain.step(1);
     applyBrainToActuators(brain, data);
     stepShuffle(brain, data, 0.001);
@@ -953,12 +958,57 @@ function stepSimulation() {
 
     buildDriveMap(model, brain);
     buildShuffleMap();
-    brain.setStim('sweet', 1);
+    // Sensory bath off by default — place food pellets to drive GRNs through the network.
+    brain.setStim('sweet', 0);
+    brain.setFoodDrive(0);
     $("s_neu").textContent = brain.N.toLocaleString();
     $("s_syn").textContent = brain.E.toLocaleString();
     $('s_nbody').textContent = String(model.nbody);
     $('s_nu').textContent    = String(model.nu);
     $('s_tri').textContent   = tris.toLocaleString();
+
+    const food = createFoodSystem(scene);
+    const env = createEnvironmentController(scene, null);
+    let foodDrive = 0;
+    const placeRay = new THREE.Raycaster();
+    const placePtr = new THREE.Vector2();
+
+    function thoraxPos() {
+      const bid = mujoco.mj_name2id(model, 1 /* mjOBJ_BODY */, "thorax");
+      if (bid >= 0) {
+        const bi = bid * 3;
+        return { x: data.xpos[bi], y: data.xpos[bi + 1], z: data.xpos[bi + 2] };
+      }
+      const qadr = freeJnt >= 0 ? model.jnt_qposadr[freeJnt] : 0;
+      return { x: data.qpos[qadr], y: data.qpos[qadr + 1], z: data.qpos[qadr + 2] };
+    }
+
+    function syncFoodDrive() {
+      foodDrive = food.proximityDrive(thoraxPos());
+      brain.setFoodDrive(foodDrive);
+      const sugarBtn = $('b_sugar');
+      if (sugarBtn instanceof HTMLElement) {
+        const bath = (brain.stim.sweet || 0) > 0;
+        sugarBtn.classList.toggle('on', bath);
+        sugarBtn.setAttribute('aria-pressed', String(bath));
+        $('sugar-label').textContent = bath ? 'Sugar bath on' : 'Sugar bath';
+      }
+    }
+
+    function groundHitFromEvent(ev) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      placePtr.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      placePtr.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      placeRay.setFromCamera(placePtr, camera);
+      const targets = [];
+      if (env.ground.visible) targets.push(env.ground);
+      const terr = propObjs['terrarium.glb'];
+      if (terr && terr.visible) targets.push(terr);
+      // Also hit MuJoCo floor-ish geoms
+      for (const g of geomNodes) if (g.isFloor) targets.push(g.mesh);
+      const hits = placeRay.intersectObjects(targets, true);
+      return hits[0] || null;
+    }
 
     // ---- controls
     $('b_pause').onclick = (e) => {
@@ -969,25 +1019,52 @@ function stepSimulation() {
         e.currentTarget.title = sim.paused ? 'Resume' : 'Pause';
       }
     };
+
+    const foodBtn = $('b_food');
+    foodBtn.onclick = () => {
+      food.setPlaceMode(!food.placeMode);
+      foodBtn.setAttribute('aria-pressed', String(food.placeMode));
+      foodBtn.textContent = food.placeMode ? 'Click ground…' : 'Place food';
+      document.body.classList.toggle('is-placing-food', food.placeMode);
+      controls.enabled = !food.placeMode;
+    };
+
+    const envSelect = $('env-mode');
+    if (envSelect instanceof HTMLSelectElement) {
+      envSelect.value = env.mode;
+      envSelect.onchange = () => {
+        env.setMode(envSelect.value);
+        const terr = propObjs['terrarium.glb'];
+        if (terr) terr.visible = envSelect.value === 'terrarium';
+        const ballWrap = propObjs['beach_ball.glb'];
+        if (ballWrap) ballWrap.visible = envSelect.value === 'terrarium';
+      };
+    }
+
+    renderer.domElement.addEventListener('pointerdown', (ev) => {
+      if (!food.placeMode || ev.button !== 0) return;
+      const hit = groundHitFromEvent(ev);
+      if (!hit) return;
+      food.addFood(hit.point.x, hit.point.y, hit.point.z);
+      syncFoodDrive();
+      // Stay in place mode for multiple pellets; right-click / button toggles off.
+      ev.preventDefault();
+      ev.stopPropagation();
+    });
+
     for (const btn of document.querySelectorAll('[data-stim]')) {
       if (!(btn instanceof HTMLButtonElement)) continue;
       const k = btn.dataset.stim;
       if (!k) continue;
-      if (!(k in brain.stim)) {          // stale brain.js, or a typo'd data-stim
+      if (!(k in brain.stim)) {
         btn.disabled = true; btn.title = 'no such stimulus in the loaded brain.js';
         console.warn(`stimulus "${k}" not in brain.js — stale cache?`);
         continue;
       }
       btn.onclick = () => {
         brain.setStim(k, brain.stim[k] > 0 ? 0 : 1);
-        for (const other of document.querySelectorAll('[data-stim]')) {
-          if (!(other instanceof HTMLButtonElement)) continue;
-          const on = brain.stim[other.dataset.stim || ''] > 0;
-          other.classList.toggle('on', on);
-          other.setAttribute('aria-pressed', String(on));
-        }
-        $('sugar-label').textContent = brain.sugar > 0 ? 'Sugar on' : 'Sugar off';
-        document.body.classList.toggle('is-sugar-off', brain.sugar <= 0);
+        syncFoodDrive();
+        document.body.classList.toggle('is-sugar-off', (brain.stim.sweet || 0) <= 0 && foodDrive <= 0);
       };
     }
 
@@ -1084,6 +1161,12 @@ function stepSimulation() {
         $("s_time").textContent = data.time.toFixed(2) + " s";
         $("s_bms").textContent = ((brain.ms - sim.brainStartMs) / 1000).toFixed(2) + " s";
         $("s_pop").textContent = brain.popRate.toFixed(1) + " Hz";
+        if (document.getElementById("s_spk"))
+          $("s_spk").textContent = brain.spikePerMs.toFixed(0);
+        if (document.getElementById("s_syne"))
+          $("s_syne").textContent = Math.round(brain.synPerMs).toLocaleString();
+        if (document.getElementById("s_food"))
+          $("s_food").textContent = (foodDrive * 100).toFixed(0) + "%";
         const hz = (k) => (brain.rate[k] || 0).toFixed(1) + " Hz";
         $("s_grn").textContent = hz("grn_sweet");
         $("s_mnp").textContent = hz("mn_proboscis");
@@ -1110,7 +1193,12 @@ function stepSimulation() {
           $("s_walk").textContent = String(shuffle.count);      }
       $('s_cnt').textContent  = brain.sugarFeedSpikes.toLocaleString();
 
-      if (!sim.paused) stepBall(wall);
+      if (!sim.paused) {
+        syncFoodDrive();
+        const th = thoraxPos();
+        env.update(wall, th.x, th.y, data, freeJnt >= 0 ? model.jnt_qposadr[freeJnt] : -1);
+        stepBall(wall);
+      }
       controls.update();
       renderer.render(scene, camera);
       if (now >= mapAt) {
@@ -1154,6 +1242,8 @@ function stepSimulation() {
       get world() {
         return world;
       },
+      food,
+      env,
       dbg: () => ({
         paused: sim.paused,
         acc,
@@ -1162,6 +1252,11 @@ function stepSimulation() {
         nodes: geomNodes.length,
         brainMs: brain.ms,
         sugar: brain.sugar,
+        foodDrive,
+        synapseEvents: brain.synapseEvents,
+        synPerMs: brain.synPerMs,
+        spikePerMs: brain.spikePerMs,
+        env: env.mode,
         rates: { ...brain.rate },
         pop: brain.popRate,
       }),

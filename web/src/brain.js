@@ -1,7 +1,9 @@
 /**
  * Realtime whole-CNS LIF over the Janelia Male CNS connectome.
- * Kernel shape follows infinite-sugar / desktop-fly (1 ms steps, delayed inhibition);
- * wiring + E/I signs are the Male CNS Traced graph. Gains are hand-tuned for embodiment.
+ *
+ * Every Traced neuron and every synapse between them is stepped each ms.
+ * Sensory input (e.g. sugar GRNs) enters only at receptor pools; motor rates
+ * rise through synaptic propagation on the CSR graph — not by bypassing the net.
  */
 import { dataBase } from "./paths.js";
 import { buildRoles, STIM_MAP } from "./roles.js";
@@ -11,12 +13,13 @@ const THRESH = 1.0;
 const REFRACT = 2;
 const INH_DELAY = 4;
 const INH_SLOTS = INH_DELAY + 1;
-// Gains tuned for Male CNS scale (~25M edges). Stronger than Shiu batch LIF would
-// saturate the browser; embodiment needs sparse enough spikes for realtime.
-const WSCALE = 0.0016;
-const BASE_MAX = 0.035;
-const NOISE_PER_STEP = 120;
-const NOISE_KICK = 0.32;
+// Scaled so GRN drive propagates through the full Male CNS to motor pools.
+// (0.0016 left the graph effectively silent; motor motion was a hand bypass.)
+const WSCALE = 0.0075;
+const BASE_MAX = 0.01;
+// Tiny stochastic jitter only — synaptic events dominate when the network is active.
+const NOISE_PER_STEP = 12;
+const NOISE_KICK = 0.08;
 
 async function fetchBytes(url, onProgress) {
   const res = await fetch(url);
@@ -94,12 +97,17 @@ export class Brain {
     this.slot = 0;
     this.ms = 0;
     this.totalSpikes = 0;
+    this.synapseEvents = 0;
+    this.noiseEvents = 0;
+    this.lastStepSpikes = 0;
+    this.lastStepSynapses = 0;
+    this.synPerMs = 0;
+    this.spikePerMs = 0;
 
     this.groups = {};
     for (const [k, arr] of Object.entries(roles)) {
       this.groups[k] = Int32Array.from(arr);
     }
-    // Prefer primary motor labels when a neuron appears in multiple role lists.
     const priority = [
       "mn_proboscis",
       "mn_neck_l",
@@ -135,7 +143,6 @@ export class Brain {
       ...priority.filter((k) => this.groups[k]),
       ...Object.keys(this.groups).filter((k) => !priority.includes(k)),
     ];
-    // Skip aliases that duplicate another pool for roleOf ownership.
     this.skipRoleOf = new Set([
       "mn_ingestion",
       "mn_neck",
@@ -168,12 +175,13 @@ export class Brain {
     this.STIM = STIM_MAP;
     this.stim = {};
     for (const k of Object.keys(this.STIM)) this.stim[k] = 0;
-    this.stimDrive = 0.14;
+    this.stimDrive = 0.22;
     this._active = [];
     this.sugar = 0;
     this.feedSpikes = 0;
     this.sugarFeedSpikes = 0;
     this.rest = null;
+    this._foodDrive = 0;
   }
 
   static async load(base = dataBase(), say = () => {}) {
@@ -242,67 +250,68 @@ export class Brain {
     return new Brain(meta, indptr, colidx, w, neurons, roles);
   }
 
+  /**
+   * Sensory drive only — stimulus never writes directly into motor pools.
+   * Downstream motor recruitment must come from synaptic propagation.
+   */
   setStim(name, level) {
     if (!(name in this.stim)) return;
-    this.stim[name] = level;
+    this.stim[name] = Math.max(0, Math.min(1, level));
+    this._rebuildActive();
+  }
+
+  /** Rebuild receptor drive from all stim channels (and optional food proximity). */
+  setFoodDrive(level) {
+    const next = Math.max(0, Math.min(1, level || 0));
+    const prev = this._foodDrive || 0;
+    if (Math.abs(next - prev) < 0.01 && (next > 0) === (prev > 0)) {
+      this._foodDrive = next;
+      this.sugar = Math.max(this.stim.sweet || 0, next);
+      return;
+    }
+    this._foodDrive = next;
+    this._rebuildActive();
+  }
+
+  _rebuildActive() {
     this._active = [];
+    const sweet = Math.max(this.stim.sweet || 0, this._foodDrive || 0);
     for (const k of Object.keys(this.stim)) {
-      const lv = this.stim[k];
+      const lv = k === "sweet" ? sweet : this.stim[k];
       if (lv <= 0) continue;
       for (const r of this.STIM[k]) {
         const g = this.groups[r];
         if (g?.length) this._active.push({ idx: g, amt: lv * this.stimDrive });
       }
     }
-    // Supplied sugar→feeding / walk reflex gains (Male CNS sugar path does not
-    // strongly recruit these pools under the realtime kernel alone).
-    if (this.stim.sweet > 0) {
-      const boost = this.stim.sweet * this.stimDrive * 0.45;
-      for (const r of [
-        "mn_proboscis",
-        "mn_ingestion",
-        "dn_walk",
-        "dn_groom",
-        "mn_leg_flex",
-        "mn_leg_ext",
-        "mn_leg_stance",
-        "mn_leg_tarsus",
-        "mn_leg_ltm",
-        "mn_wing",
-        "mn_abdomen",
-        "pam",
-      ]) {
-        const g = this.groups[r];
-        if (g?.length) this._active.push({ idx: g, amt: boost });
-      }
-      const steerBoost = this.stim.sweet * this.stimDrive * 0.25;
-      for (const r of ["dn_steer_l", "dn_steer_r", "mn_neck_l", "mn_neck_r", "mn_antenna_l", "mn_antenna_r"]) {
-        const g = this.groups[r];
-        if (g?.length) this._active.push({ idx: g, amt: steerBoost });
-      }
-    }
-    this.sugar = this.stim.sweet;
+    this.sugar = sweet;
   }
 
   calibrate(ms = 2500) {
     const saved = { ...this.stim };
+    const food = this._foodDrive || 0;
     for (const k of Object.keys(this.stim)) this.setStim(k, 0);
+    this.setFoodDrive(0);
     this.step(ms);
     this.rest = {};
     for (const k of this.roleNames) this.rest[k] = Math.max(0.5, this.rate[k] || 0.5);
     for (const [k, v] of Object.entries(saved)) this.setStim(k, v);
+    this.setFoodDrive(food);
     return this.rest;
   }
 
   async calibrateResponsive(ms = 2500) {
     const saved = { ...this.stim };
+    const food = this._foodDrive || 0;
     for (const k of Object.keys(this.stim)) this.setStim(k, 0);
+    this.setFoodDrive(0);
     for (let elapsed = 0; elapsed < ms; elapsed += 25) {
       this.step(Math.min(25, ms - elapsed));
       await new Promise((r) => setTimeout(r, 0));
     }
     this.calibrate(0);
     for (const [k, v] of Object.entries(saved)) this.setStim(k, v);
+    this.setFoodDrive(food);
     return this.rest;
   }
 
@@ -347,7 +356,10 @@ export class Brain {
       }
       inhCnt[slot] = 0;
 
-      for (let k = 0; k < NOISE_PER_STEP; k++) v[this._rand() % N] += NOISE_KICK;
+      for (let k = 0; k < NOISE_PER_STEP; k++) {
+        v[this._rand() % N] += NOISE_KICK;
+        this.noiseEvents++;
+      }
 
       for (let a = 0; a < active.length; a++) {
         const idx = active[a].idx;
@@ -375,12 +387,14 @@ export class Brain {
       const iq = inhVal[is];
       let iqi2 = this.inhIdx[is];
       let ic = inhCnt[is];
+      let syn = 0;
       // Deliver every outgoing synapse of every spiking neuron (full Male CNS CSR).
       for (let s = 0; s < ns; s++) {
         const i = spiked[s];
         const a = indptr[i];
         const b = indptr[i + 1];
         for (let k = a; k < b; k++) {
+          syn++;
           const j = colidx[k];
           const x = w[k];
           if (x >= 0) {
@@ -403,6 +417,11 @@ export class Brain {
         }
       }
       inhCnt[is] = ic;
+      this.lastStepSpikes = ns;
+      this.lastStepSynapses = syn;
+      this.synapseEvents += syn;
+      this.spikePerMs += (ns - this.spikePerMs) * 0.05;
+      this.synPerMs += (syn - this.synPerMs) * 0.05;
 
       this._cnt.fill(0);
       for (let s = 0; s < ns; s++) {
@@ -417,7 +436,6 @@ export class Brain {
         const n0 = this.groups[k].length || 1;
         this.rate[k] += (this._cnt[r] * 1000 / n0 - this.rate[k]) * this.rateAlpha;
       }
-      // Aggregate aliases from side / primary pools
       const avg = (a, b) => ((this.rate[a] || 0) + (this.rate[b] || 0)) / 2;
       this.rate.mn_ingestion = this.rate.mn_proboscis || 0;
       this.rate.mn_neck = avg("mn_neck_l", "mn_neck_r");

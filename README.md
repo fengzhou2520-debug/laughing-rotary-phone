@@ -25,7 +25,7 @@ Current build: **165,122 neurons · 25,563,197 synapses · 11,751 cell types**.
 - Tripod-style walking from VNC leg flexor / extensor / stance / tarsus / LTM rates, with free-joint translation so the fly walks around the terrarium
 - Adaptive quality scaler for realtime performance (rendering only — the LIF still steps every Traced neuron and every synapse)
 
-Realtime kernel uses 1&nbsp;ms steps (infinite-sugar / desktop-fly style) on the Male CNS CSR wiring. Batch Shiu-parameter LIF (`web/src/lif.js`) remains available for offline smoke tests.
+Realtime kernel uses 1&nbsp;ms steps on the **full** Male CNS CSR wiring. Sugar food (click **Place food**) or the optional sugar bath stimulates only gustatory receptors; motor activity is recruited by synaptic propagation — not a hand-wired motor bypass. Environments: terrarium, Euclidean flat plane, [Nil geometry](https://3-dimensional.space/geometries/nil/), and a Nil contact-metric plane.
 
 ## Local app
 

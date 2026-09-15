@@ -286,6 +286,49 @@ body.is-paused .play-symbol {
     background 0.2s,
     color 0.2s;
 }
+.tool-button {
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(16, 28, 24, 0.88);
+  color: var(--ink);
+}
+.tool-button[aria-pressed="true"] {
+  background: rgba(196, 240, 97, 0.22);
+  border-color: rgba(196, 240, 97, 0.65);
+  color: var(--sugar);
+}
+.env-select {
+  display: flex;
+  align-items: center;
+}
+.env-select select {
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(16, 28, 24, 0.92);
+  color: var(--ink);
+  font: 500 13px/1 var(--sans);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+body.is-placing-food {
+  cursor: crosshair;
+}
+body.is-placing-food #artwork canvas {
+  cursor: crosshair;
+}
 .sugar-button.on {
   background: var(--sugar);
   border-color: var(--sugar);
