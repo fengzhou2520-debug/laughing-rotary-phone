@@ -13,13 +13,13 @@ const THRESH = 1.0;
 const REFRACT = 2;
 const INH_DELAY = 4;
 const INH_SLOTS = INH_DELAY + 1;
-// Scaled so GRN drive propagates through the full Male CNS to motor pools.
+// Scaled so GRN / sensory drive propagates through the full Male CNS to motor pools.
 // (0.0016 left the graph effectively silent; motor motion was a hand bypass.)
-const WSCALE = 0.0075;
+const WSCALE = 0.009;
 const BASE_MAX = 0.01;
 // Tiny stochastic jitter only — synaptic events dominate when the network is active.
-const NOISE_PER_STEP = 12;
-const NOISE_KICK = 0.08;
+const NOISE_PER_STEP = 16;
+const NOISE_KICK = 0.1;
 
 async function fetchBytes(url, onProgress) {
   const res = await fetch(url);
@@ -175,7 +175,7 @@ export class Brain {
     this.STIM = STIM_MAP;
     this.stim = {};
     for (const k of Object.keys(this.STIM)) this.stim[k] = 0;
-    this.stimDrive = 0.22;
+    this.stimDrive = 0.32;
     this._active = [];
     this.sugar = 0;
     this.feedSpikes = 0;
@@ -258,6 +258,20 @@ export class Brain {
     if (!(name in this.stim)) return;
     this.stim[name] = Math.max(0, Math.min(1, level));
     this._rebuildActive();
+  }
+
+  /** Set many sensory channels then rebuild receptor drive once. */
+  setStimMany(levels) {
+    let changed = false;
+    for (const [name, level] of Object.entries(levels)) {
+      if (!(name in this.stim)) continue;
+      const next = Math.max(0, Math.min(1, level));
+      if (Math.abs((this.stim[name] || 0) - next) > 1e-4) {
+        this.stim[name] = next;
+        changed = true;
+      }
+    }
+    if (changed) this._rebuildActive();
   }
 
   /** Rebuild receptor drive from all stim channels (and optional food proximity). */

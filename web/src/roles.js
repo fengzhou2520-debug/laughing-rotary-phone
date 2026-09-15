@@ -50,7 +50,7 @@ export function buildRoles(neurons, typeIndex) {
     return out;
   };
 
-  // --- Sensory (full matching pools — every identified cell can receive stimulation) ---
+  // --- Sensory (FULL Male CNS sensory periphery — every matching cell) ---
   add("grn_sweet", typeIndex["claw_tpGRN"]);
   add("grn_sweet", typeIndex["dorsal_tpGRN"]);
   add(
@@ -61,11 +61,22 @@ export function buildRoles(neurons, typeIndex) {
     "grn_bitter",
     typesMatching((t) => /^LB[1-3]/.test(t))
   );
+  // Broader gustatory / chemosensory pools (all class members, not a subsample)
+  add("gustatory", classOf("gustatory"));
+  add("chemo", classOf("chemosensory"));
   add(
     "orn",
     typesMatching((t) => t.startsWith("ORN_"))
   );
-  add("mechano", classOf("mechanosensory").concat(classOf("mechanosensory_tactile")));
+  add("olfactory", classOf("olfactory"));
+  add(
+    "mechano",
+    classOf("mechanosensory")
+      .concat(classOf("mechanosensory_tactile"))
+      .concat(classOf("mechanosensory_tbc"))
+  );
+  add("proprio", classOf("mechanosensory_proprioceptive"));
+  add("unknown_sensory", classOf("unknown_sensory"));
   add("thermo", classOf("thermosensory"));
   add("hygro", classOf("hygrosensory"));
   add("visual", classOf("visual"));
@@ -195,12 +206,13 @@ export function buildRoles(neurons, typeIndex) {
   return roles;
 }
 
-/** Sensory switches → role populations (levels 0..1). */
+/** Sensory switches → role populations (levels 0..1). Full periphery. */
 export const STIM_MAP = {
-  sweet: ["grn_sweet", "grn_sweet_leg"],
-  bitter: ["grn_bitter"],
-  odour: ["orn"],
-  touch: ["mechano"],
+  sweet: ["grn_sweet", "grn_sweet_leg", "gustatory"],
+  bitter: ["grn_bitter", "chemo"],
+  odour: ["orn", "olfactory"],
+  touch: ["mechano", "unknown_sensory"],
+  proprio: ["proprio"],
   heat: ["thermo"],
   damp: ["hygro"],
   light: ["visual"],

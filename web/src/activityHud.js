@@ -63,7 +63,9 @@ export function createActivityHud(canvas, brain) {
       const y = 6 + i * rowH;
       const rate = brain.rate[r.key] || 0;
       const rest = (brain.rest && brain.rest[r.key]) || 1;
-      const frac = Math.max(0, Math.min(1, rate / Math.max(30, rest * 4)));
+      // Bar = activity above rest (matches body drive). Resting Hz alone does not fill.
+      const excess = Math.max(0, rate - rest);
+      const frac = Math.max(0, Math.min(1, excess / Math.max(8, rest * 2)));
       ctx.fillStyle = "rgba(255,255,255,0.08)";
       ctx.fillRect(78, y + 2, w - 86, rowH - 4);
       ctx.fillStyle = colors[r.kind] || "#fff";

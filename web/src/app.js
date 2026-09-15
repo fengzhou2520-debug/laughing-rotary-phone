@@ -10,6 +10,7 @@ import { createActivityHud } from "./activityHud.js";
 import { AdaptiveQuality } from "./performance.js";
 import { createFoodSystem } from "./food.js";
 import { createEnvironmentController, tagEnvProp } from "./environments.js";
+import { applyWorldSenses } from "./senses.js";
 import * as CANNON from "cannon-es";
 import { modelBase } from "./paths.js";
 
@@ -467,48 +468,51 @@ function resetSim() {
 //
 // `gain` is how many multiples of the RESTING rate map to full joint excursion. Resting rates
 // are measured at load by brain.calibrate() — they depend on the kernel, not just the wiring.
+// `gain` = multiples of resting rate for full excursion. Lower = more sensitive to
+// modest supra-rest recruitment through the connectome.
 const DRIVE = [
-  { act: "rostrum", role: "mn_proboscis", gain: 2.0, to: -1.24 },
-  { act: "haustellum", role: "mn_proboscis", gain: 2.0, to: -1.59 },
-  { act: "haustellum_abduct", role: "mn_proboscis", gain: 2.5, to: 0.087 },
-  { act: "labrum_left", role: "mn_proboscis", gain: 2.0, to: 1.05 },
-  { act: "labrum_right", role: "mn_proboscis", gain: 2.0, to: 1.05 },
-  { act: "adhere_labrum_left", role: "mn_proboscis", gain: 2.0, to: 1.0 },
-  { act: "adhere_labrum_right", role: "mn_proboscis", gain: 2.0, to: 1.0 },
-  { act: "head", role: "mn_neck_r", gain: 3.0, to: -0.30 },
-  { act: "head_twist", role: "mn_neck_r", gain: 2.0, to: 0.30 },
-  { act: "head_abduct", role: "mn_neck_l", gain: 1.3, to: 0.20 },
-  { act: "antenna_left", role: "mn_antenna_l", gain: 4.0, to: 0.50 },
-  { act: "antenna_abduct_left", role: "mn_antenna_l", gain: 4.0, to: 0.80 },
-  { act: "antenna_twist_left", role: "mn_antenna_l", gain: 4.0, to: 0.09 },
-  { act: "antenna_right", role: "mn_antenna_r", gain: 4.0, to: 0.50 },
-  { act: "antenna_abduct_right", role: "mn_antenna_r", gain: 4.0, to: 0.80 },
-  { act: "antenna_twist_right", role: "mn_antenna_r", gain: 4.0, to: 0.09 },
+  { act: "rostrum", role: "mn_proboscis", gain: 1.45, to: -1.24 },
+  { act: "haustellum", role: "mn_proboscis", gain: 1.45, to: -1.59 },
+  { act: "haustellum_abduct", role: "mn_proboscis", gain: 1.6, to: 0.087 },
+  { act: "labrum_left", role: "mn_proboscis", gain: 1.45, to: 1.05 },
+  { act: "labrum_right", role: "mn_proboscis", gain: 1.45, to: 1.05 },
+  { act: "adhere_labrum_left", role: "mn_proboscis", gain: 1.45, to: 1.0 },
+  { act: "adhere_labrum_right", role: "mn_proboscis", gain: 1.45, to: 1.0 },
+  { act: "head", role: "mn_neck_r", gain: 1.6, to: -0.30 },
+  { act: "head_twist", role: "mn_neck_r", gain: 1.5, to: 0.30 },
+  { act: "head_abduct", role: "mn_neck_l", gain: 1.25, to: 0.20 },
+  { act: "antenna_left", role: "mn_antenna_l", gain: 1.8, to: 0.50 },
+  { act: "antenna_abduct_left", role: "mn_antenna_l", gain: 1.8, to: 0.80 },
+  { act: "antenna_twist_left", role: "mn_antenna_l", gain: 1.8, to: 0.09 },
+  { act: "antenna_right", role: "mn_antenna_r", gain: 1.8, to: 0.50 },
+  { act: "antenna_abduct_right", role: "mn_antenna_r", gain: 1.8, to: 0.80 },
+  { act: "antenna_twist_right", role: "mn_antenna_r", gain: 1.8, to: 0.09 },
   // Abdominal MNs (primary) + grooming DN overlay
-  { act: "abdomen", role: "mn_abdomen", gain: 2.0, to: -0.15 },
-  { act: "abdomen_abduct", role: "mn_abdomen_l", gain: 2.0, to: 0.25 },
-  { act: "abdomen_abduct", role: "mn_abdomen_r", gain: 2.0, to: -0.25 },
-  { act: "abdomen", role: "dn_groom", gain: 1.5, to: -0.15, cmd: true },
+  { act: "abdomen", role: "mn_abdomen", gain: 1.5, to: -0.15 },
+  { act: "abdomen_abduct", role: "mn_abdomen_l", gain: 1.5, to: 0.25 },
+  { act: "abdomen_abduct", role: "mn_abdomen_r", gain: 1.5, to: -0.25 },
+  { act: "abdomen", role: "dn_groom", gain: 1.35, to: -0.15, cmd: true },
   // Wing actuators are FORCE generals. Usable ctrl band ≈ [-0.004, +0.010].
   // Primary drive: VNC wing motor neurons. Overlays: steer / groom / escape DNs.
-  { act: "wing_yaw_left", role: "mn_wing_l", band: [5, 80], raw: [0, -0.0022] },
-  { act: "wing_yaw_right", role: "mn_wing_r", band: [5, 80], raw: [0, -0.0022] },
-  { act: "wing_roll_left", role: "mn_wing_l", band: [5, 80], raw: [0, 0.0014] },
-  { act: "wing_roll_right", role: "mn_wing_r", band: [5, 80], raw: [0, 0.0014] },
-  { act: "wing_pitch_left", role: "mn_wing_l", band: [5, 80], raw: [0, 0.0020] },
-  { act: "wing_pitch_right", role: "mn_wing_r", band: [5, 80], raw: [0, 0.0020] },
-  { act: "wing_yaw_left", role: "dn_steer_l", band: [20, 110], raw: [0, -0.0018], cmd: true },
-  { act: "wing_yaw_right", role: "dn_steer_r", band: [20, 110], raw: [0, -0.0018], cmd: true },
-  { act: "wing_roll_left", role: "dn_steer_l", band: [20, 110], raw: [0, 0.0010], cmd: true },
-  { act: "wing_roll_right", role: "dn_steer_r", band: [20, 110], raw: [0, 0.0010], cmd: true },
-  { act: "wing_pitch_left", role: "dn_groom", band: [8, 45], raw: [0, 0.0030], cmd: true },
-  { act: "wing_pitch_right", role: "dn_groom", band: [8, 45], raw: [0, 0.0030], cmd: true },
-  { act: "wing_roll_left", role: "dn_escwing_l", peak: 300, raw: [0, 0.0030], cmd: true },
-  { act: "wing_roll_right", role: "dn_escwing_r", peak: 300, raw: [0, 0.0030], cmd: true },
-  { act: "wing_yaw_left", role: "dn_escwing_l", peak: 300, raw: [0, -0.0035], cmd: true },
-  { act: "wing_yaw_right", role: "dn_escwing_r", peak: 300, raw: [0, -0.0035], cmd: true },
-  { act: "wing_pitch_left", role: "dn_escwing_l", peak: 300, raw: [0, 0.0080], cmd: true },
-  { act: "wing_pitch_right", role: "dn_escwing_r", peak: 300, raw: [0, 0.0080], cmd: true },
+  // Bands are Hz above resting rate (not absolute), so spontaneous rest does not flap.
+  { act: "wing_yaw_left", role: "mn_wing_l", band: [0.5, 25], raw: [0, -0.0022] },
+  { act: "wing_yaw_right", role: "mn_wing_r", band: [0.5, 25], raw: [0, -0.0022] },
+  { act: "wing_roll_left", role: "mn_wing_l", band: [0.5, 25], raw: [0, 0.0014] },
+  { act: "wing_roll_right", role: "mn_wing_r", band: [0.5, 25], raw: [0, 0.0014] },
+  { act: "wing_pitch_left", role: "mn_wing_l", band: [0.5, 25], raw: [0, 0.0020] },
+  { act: "wing_pitch_right", role: "mn_wing_r", band: [0.5, 25], raw: [0, 0.0020] },
+  { act: "wing_yaw_left", role: "dn_steer_l", band: [1, 40], raw: [0, -0.0018], cmd: true },
+  { act: "wing_yaw_right", role: "dn_steer_r", band: [1, 40], raw: [0, -0.0018], cmd: true },
+  { act: "wing_roll_left", role: "dn_steer_l", band: [1, 40], raw: [0, 0.0010], cmd: true },
+  { act: "wing_roll_right", role: "dn_steer_r", band: [1, 40], raw: [0, 0.0010], cmd: true },
+  { act: "wing_pitch_left", role: "dn_groom", band: [0.5, 20], raw: [0, 0.0030], cmd: true },
+  { act: "wing_pitch_right", role: "dn_groom", band: [0.5, 20], raw: [0, 0.0030], cmd: true },
+  { act: "wing_roll_left", role: "dn_escwing_l", peak: 80, raw: [0, 0.0030], cmd: true },
+  { act: "wing_roll_right", role: "dn_escwing_r", peak: 80, raw: [0, 0.0030], cmd: true },
+  { act: "wing_yaw_left", role: "dn_escwing_l", peak: 80, raw: [0, -0.0035], cmd: true },
+  { act: "wing_yaw_right", role: "dn_escwing_r", peak: 80, raw: [0, -0.0035], cmd: true },
+  { act: "wing_pitch_left", role: "dn_escwing_l", peak: 80, raw: [0, 0.0080], cmd: true },
+  { act: "wing_pitch_right", role: "dn_escwing_r", peak: 80, raw: [0, 0.0080], cmd: true },
 ];
 let driveMap = [];
 let driveGroups = []; // [actuatorIndex, entries[]] — several pools may drive one joint
@@ -565,10 +569,18 @@ function buildDriveMap(m, b) {
   driveGroups = [...byAct.entries()];
 }
 
+/** Hz above calibrated resting rate — motion tracks recruitment, not spontaneous rest. */
+function excessHz(b, role) {
+  const rate = b.rate[role] || 0;
+  const rest = (b.rest && b.rest[role]) || 0.5;
+  return Math.max(0, rate - rest);
+}
+
 function activation(b, k) {
   let a;
-  if (k.peak)      a = b.rate[k.role] / k.peak;
-  else if (k.band) a = (b.rate[k.role] - k.band[0]) / (k.band[1] - k.band[0]);
+  const excess = excessHz(b, k.role);
+  if (k.peak) a = excess / k.peak;
+  else if (k.band) a = (excess - k.band[0]) / (k.band[1] - k.band[0]);
   else {
     if (k.gain === undefined) throw new Error(`drive ${k.act} has no activation scale`);
     const rest = (b.rest && b.rest[k.role]) || 1;
@@ -577,8 +589,8 @@ function activation(b, k) {
   return a < 0 ? 0 : a > 1 ? 1 : a;
 }
 
-function rateNorm(b, role, scale = 80) {
-  return Math.max(0, Math.min(1, Math.max(0, b.rate[role] || 0) / scale));
+function rateNorm(b, role, scale = 20) {
+  return Math.max(0, Math.min(1, excessHz(b, role) / scale));
 }
 
 let neural = true;
@@ -703,21 +715,22 @@ function clampAct(ai, value) {
 
 function stepShuffle(b, d, dt) {
   const enabled = neural && shuffle.enabled;
+  // Drive gait from supra-rest motor recruitment (connectome output), not resting Hz.
   const flex =
-    Math.max(0, b.rate.mn_leg_flex || 0) +
-    Math.max(0, b.rate.mn_leg_flex_l || 0) +
-    Math.max(0, b.rate.mn_leg_flex_r || 0);
+    excessHz(b, "mn_leg_flex") +
+    excessHz(b, "mn_leg_flex_l") +
+    excessHz(b, "mn_leg_flex_r");
   const ext =
-    Math.max(0, b.rate.mn_leg_ext || 0) +
-    Math.max(0, b.rate.mn_leg_ext_l || 0) +
-    Math.max(0, b.rate.mn_leg_ext_r || 0);
+    excessHz(b, "mn_leg_ext") +
+    excessHz(b, "mn_leg_ext_l") +
+    excessHz(b, "mn_leg_ext_r");
   const stance =
-    Math.max(0, b.rate.mn_leg_stance || 0) +
-    Math.max(0, b.rate.mn_leg_stance_l || 0) +
-    Math.max(0, b.rate.mn_leg_stance_r || 0);
-  const groom = Math.max(0, b.rate.dn_groom || 0);
-  const walkCmd = Math.max(0, b.rate.dn_walk || 0);
-  const legDrive = flex * 0.45 + ext * 0.25 + stance * 0.2 + groom * 0.25 + walkCmd * 0.8;
+    excessHz(b, "mn_leg_stance") +
+    excessHz(b, "mn_leg_stance_l") +
+    excessHz(b, "mn_leg_stance_r");
+  const groom = excessHz(b, "dn_groom");
+  const walkCmd = excessHz(b, "dn_walk");
+  const legDrive = flex * 0.55 + ext * 0.3 + stance * 0.25 + groom * 0.35 + walkCmd * 1.1;
 
   if (!enabled) {
     shuffle.active = -1;
@@ -727,13 +740,13 @@ function stepShuffle(b, d, dt) {
     shuffle.phase = Math.min(1, shuffle.phase + dt / shuffle.duration);
     if (shuffle.phase >= 1) {
       shuffle.active = -1;
-      shuffle.cooldown = 0.12 + 0.25 / (1 + legDrive / 40);
+      shuffle.cooldown = 0.08 + 0.18 / (1 + legDrive / 25);
     }
   } else if (shuffle.cooldown > 0) {
     shuffle.cooldown = Math.max(0, shuffle.cooldown - dt);
   } else {
-    shuffle.charge += Math.min(140, legDrive) * dt;
-    const threshold = Math.max(4, 14 - legDrive / 20);
+    shuffle.charge += Math.min(200, Math.max(0, legDrive)) * dt;
+    const threshold = Math.max(1.2, 6 - legDrive / 30);
     if (shuffle.charge >= threshold && shuffleLegs.length) {
       shuffle.active = shuffle.next;
       shuffle.next = (shuffle.next + 1) % shuffleLegs.length;
@@ -741,11 +754,11 @@ function stepShuffle(b, d, dt) {
       shuffle.phase = 0;
       shuffle.count++;
       const leg = shuffleLegs[shuffle.active];
-      const steer = Math.max(0, b.rate[leg.role] || 0);
-      const sideFlex = Math.max(0, b.rate[leg.flexRole] || 0);
+      const steer = excessHz(b, leg.role);
+      const sideFlex = excessHz(b, leg.flexRole);
       shuffle.strength =
-        0.55 + 0.45 * Math.min(1, (steer + sideFlex + flex * 0.2) / 120);
-      shuffle.duration = 0.28 + 0.22 / (1 + legDrive / 50);
+        0.65 + 0.35 * Math.min(1, (steer + sideFlex + flex * 0.25) / 40);
+      shuffle.duration = 0.22 + 0.2 / (1 + legDrive / 35);
     }
   }
 
@@ -758,21 +771,23 @@ function stepShuffle(b, d, dt) {
         : 0;
     leg.amount += (target - leg.amount) * blend;
 
-    const flexA = rateNorm(b, leg.flexRole, 90);
-    const extA = rateNorm(b, leg.extRole, 70);
-    const stanceA = rateNorm(b, leg.stanceRole, 60);
-    const tarsA = rateNorm(b, leg.tarsusRole, 50);
-    const ltmA = rateNorm(b, leg.ltmRole, 50);
+    const flexA = rateNorm(b, leg.flexRole, 25);
+    const extA = rateNorm(b, leg.extRole, 20);
+    const stanceA = rateNorm(b, leg.stanceRole, 18);
+    const tarsA = rateNorm(b, leg.tarsusRole, 15);
+    const ltmA = rateNorm(b, leg.ltmRole, 15);
     const swing = enabled ? leg.amount : 0;
+    // Ambient posture from supra-rest MN rates even between swing steps.
+    const postureScale = enabled ? 1 : 0;
     const posture = {
-      coxa_abduct: stanceA * 0.08 + swing,
-      coxa_twist: stanceA * 0.1 + swing,
-      coxa: stanceA * 0.12 + extA * 0.06 + swing,
-      femur_twist: stanceA * 0.08 + ltmA * 0.05 + swing,
-      femur: flexA * -0.12 + extA * 0.08 + swing,
-      tibia: flexA * -0.1 + extA * 0.07 + swing,
-      tarsus: tarsA * 0.12 + ltmA * 0.06 + swing,
-      tarsus2: tarsA * 0.1 + swing,
+      coxa_abduct: (stanceA * 0.12 + swing) * postureScale,
+      coxa_twist: (stanceA * 0.14 + swing) * postureScale,
+      coxa: (stanceA * 0.16 + extA * 0.1 + swing) * postureScale,
+      femur_twist: (stanceA * 0.1 + ltmA * 0.08 + swing) * postureScale,
+      femur: (flexA * -0.18 + extA * 0.12 + swing) * postureScale,
+      tibia: (flexA * -0.15 + extA * 0.1 + swing) * postureScale,
+      tarsus: (tarsA * 0.16 + ltmA * 0.08 + swing) * postureScale,
+      tarsus2: (tarsA * 0.14 + swing) * postureScale,
     };
 
     for (const { ai, offset, act } of leg.joints) {
@@ -780,7 +795,7 @@ function stepShuffle(b, d, dt) {
       const scale = posture[key] ?? swing;
       const delta =
         key === "femur" || key === "tibia"
-          ? offset * (swing + flexA * 0.35) + Math.abs(offset) * extA * 0.25
+          ? offset * (swing + flexA * 0.5) + Math.abs(offset) * extA * 0.35
           : offset * scale;
       d.ctrl[ai] = clampAct(ai, (holdCtrl[ai] || 0) + delta);
     }
@@ -790,7 +805,7 @@ function stepShuffle(b, d, dt) {
     d.ctrl[leg.clawAi] = clampAct(leg.clawAi, cling);
   }
 
-  if (enabled && freeQvel >= 0 && legDrive > 8) {
+  if (enabled && freeQvel >= 0 && legDrive > 2.5) {
     const qadr = model.jnt_qposadr[freeJnt];
     const qw = d.qpos[qadr + 3];
     const qx = d.qpos[qadr + 4];
@@ -798,26 +813,30 @@ function stepShuffle(b, d, dt) {
     const qz = d.qpos[qadr + 6];
     const fx = 1 - 2 * (qy * qy + qz * qz);
     const fy = 2 * (qx * qy + qw * qz);
-    const steerL = b.rate.dn_steer_l || 0;
-    const steerR = b.rate.dn_steer_r || 0;
-    const turn = Math.max(-1, Math.min(1, (steerR - steerL) / 80));
-    const speed = Math.min(0.045, (legDrive / 180) * 0.04) * (shuffle.active >= 0 ? 1 : 0.35);
+    const steerL = excessHz(b, "dn_steer_l");
+    const steerR = excessHz(b, "dn_steer_r");
+    const turn = Math.max(-1, Math.min(1, (steerR - steerL) / 25));
+    const speed =
+      Math.min(0.055, (legDrive / 60) * 0.05) * (shuffle.active >= 0 ? 1 : 0.45);
     d.qvel[freeQvel] += fx * speed;
     d.qvel[freeQvel + 1] += fy * speed;
-    d.qvel[freeQvel + 5] += turn * 0.8 * speed;
+    d.qvel[freeQvel + 5] += turn * 0.9 * speed;
   }
 }
 
+const PHYSICS_DT = 1e-4; // flybody opt.timestep
+const BRAIN_EVERY = 8; // full-network LIF every N physics steps
+
 function stepSimulation() {
+  // Actuators / gait every physics step from latest rates so motion stays visible
+  // even when the full CNS LIF is expensive and updates sparsely.
+  if (sim.steps % BRAIN_EVERY === 0) {
+    brain.step(1);
+  }
+  applyBrainToActuators(brain, data);
+  stepShuffle(brain, data, PHYSICS_DT);
   mujoco.mj_step(model, data);
   sim.steps++;
-  // Full-network LIF every few physics steps. Each brain.step walks every neuron
-  // and delivers every outgoing synapse of every spike (full Male CNS CSR).
-  if (sim.steps % 8 === 0) {
-    brain.step(1);
-    applyBrainToActuators(brain, data);
-    stepShuffle(brain, data, 0.001);
-  }
 }
 
 // ---------------------------------------------------------------- main
@@ -983,9 +1002,30 @@ function stepSimulation() {
       return { x: data.qpos[qadr], y: data.qpos[qadr + 1], z: data.qpos[qadr + 2] };
     }
 
-    function syncFoodDrive() {
+    function syncWorldSenses() {
       foodDrive = food.proximityDrive(thoraxPos());
-      brain.setFoodDrive(foodDrive);
+      const th = thoraxPos();
+      let walkSpeed = 0;
+      if (freeQvel >= 0) {
+        walkSpeed = Math.hypot(data.qvel[freeQvel] || 0, data.qvel[freeQvel + 1] || 0);
+      }
+      let legContact = 0.5;
+      if (shuffleLegs.length) {
+        let cling = 0;
+        for (const leg of shuffleLegs) {
+          cling += Math.max(0, 1 - (leg.amount || 0));
+        }
+        legContact = cling / shuffleLegs.length;
+      }
+      applyWorldSenses({
+        brain,
+        foodDrive,
+        thorax: th,
+        ball,
+        envMode: env.mode,
+        legContact,
+        walkSpeed,
+      });
       const sugarBtn = $('b_sugar');
       if (sugarBtn instanceof HTMLElement) {
         const bath = (brain.stim.sweet || 0) > 0;
@@ -993,6 +1033,10 @@ function stepSimulation() {
         sugarBtn.setAttribute('aria-pressed', String(bath));
         $('sugar-label').textContent = bath ? 'Sugar bath on' : 'Sugar bath';
       }
+      document.body.classList.toggle(
+        'is-sugar-off',
+        (brain.stim.sweet || 0) <= 0 && foodDrive <= 0
+      );
     }
 
     function groundHitFromEvent(ev) {
@@ -1046,7 +1090,7 @@ function stepSimulation() {
       const hit = groundHitFromEvent(ev);
       if (!hit) return;
       food.addFood(hit.point.x, hit.point.y, hit.point.z);
-      syncFoodDrive();
+      syncWorldSenses();
       // Stay in place mode for multiple pellets; right-click / button toggles off.
       ev.preventDefault();
       ev.stopPropagation();
@@ -1063,8 +1107,7 @@ function stepSimulation() {
       }
       btn.onclick = () => {
         brain.setStim(k, brain.stim[k] > 0 ? 0 : 1);
-        syncFoodDrive();
-        document.body.classList.toggle('is-sugar-off', (brain.stim.sweet || 0) <= 0 && foodDrive <= 0);
+        syncWorldSenses();
       };
     }
 
@@ -1111,7 +1154,7 @@ function stepSimulation() {
     $('b_about').click();
 
     // ---- loop
-    const timestep = 1e-4;                          // flybody's opt.timestep
+    const timestep = PHYSICS_DT;
     let last = performance.now(), acc = 0, fps = 0, fpsT = last, frames = 0, sps = 0, spsN = 0, spsT = last;
     let nextFrameAt = last, mapAt = 0, hudAt = 0;
     // Browser suspension must never become a backlog of simulation work on return.
@@ -1168,14 +1211,17 @@ function stepSimulation() {
         if (document.getElementById("s_food"))
           $("s_food").textContent = (foodDrive * 100).toFixed(0) + "%";
         const hz = (k) => (brain.rate[k] || 0).toFixed(1) + " Hz";
+        const driveHz = (k) => {
+          const rate = brain.rate[k] || 0;
+          const rest = (brain.rest && brain.rest[k]) || 0.5;
+          const x = Math.max(0, rate - rest);
+          return rate.toFixed(1) + " Hz (+" + x.toFixed(1) + ")";
+        };
         $("s_grn").textContent = hz("grn_sweet");
-        $("s_mnp").textContent = hz("mn_proboscis");
-        $("s_mni").textContent = hz("mn_ingestion");
-        $("s_neck").textContent =
-          (((brain.rate.mn_neck_l || 0) + (brain.rate.mn_neck_r || 0)) / 2).toFixed(1) + " Hz";
-        $("s_ant").textContent =
-          (((brain.rate.mn_antenna_l || 0) + (brain.rate.mn_antenna_r || 0)) / 2).toFixed(1) +
-          " Hz";
+        $("s_mnp").textContent = driveHz("mn_proboscis");
+        $("s_mni").textContent = driveHz("mn_ingestion");
+        $("s_neck").textContent = driveHz("mn_neck");
+        $("s_ant").textContent = driveHz("mn_antenna");
         $("s_gf").textContent = hz("dn_gf");
         $("s_esc").textContent =
           (((brain.rate.dn_escwing_l || 0) + (brain.rate.dn_escwing_r || 0)) / 2).toFixed(0) +
@@ -1185,16 +1231,16 @@ function stepSimulation() {
           " / " +
           (brain.rate.dn_steer_r || 0).toFixed(0) +
           " Hz";
-        $("s_groom").textContent = (brain.rate.dn_groom || 0).toFixed(0) + " Hz";
+        $("s_groom").textContent = driveHz("dn_groom");
         $("s_pam").textContent = hz("pam");
         if (document.getElementById("s_leg"))
-          $("s_leg").textContent = hz("mn_leg_flex");
+          $("s_leg").textContent = driveHz("mn_leg_flex");
         if (document.getElementById("s_walk"))
           $("s_walk").textContent = String(shuffle.count);      }
       $('s_cnt').textContent  = brain.sugarFeedSpikes.toLocaleString();
 
       if (!sim.paused) {
-        syncFoodDrive();
+        syncWorldSenses();
         const th = thoraxPos();
         env.update(wall, th.x, th.y, data, freeJnt >= 0 ? model.jnt_qposadr[freeJnt] : -1);
         stepBall(wall);
